@@ -56,6 +56,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
     val newTabButton = Button(this)
     newTabButton.text = "+"
 
+    val backButton = Button(this)
+    backButton.text = "◀"
+
+    val forwardButton = Button(this)
+    forwardButton.text = "▶"
+
+    val reloadButton = Button(this)
+    reloadButton.text = "⟳"
+
+    topBar.addView(backButton)
+    topBar.addView(forwardButton)
+    topBar.addView(reloadButton)
     topBar.addView(addressBar)
     topBar.addView(goButton)
     topBar.addView(newTabButton)
@@ -79,7 +91,18 @@ override fun onCreate(savedInstanceState: Bundle?) {
         currentWebView()?.loadUrl(url)
     }
     newTabButton.setOnClickListener {
-        addTab(homeUrl)
+    addTab(homeUrl)
+    }
+    backButton.setOnClickListener {
+    val wv = currentWebView()
+    if (wv != null && wv.canGoBack()) wv.goBack()
+    }
+    forwardButton.setOnClickListener {
+    val wv = currentWebView()
+    if (wv != null && wv.canGoForward()) wv.goForward()
+    }
+    reloadButton.setOnClickListener {
+    currentWebView()?.reload()
     }
 
     val prefs = getSharedPreferences("settings", MODE_PRIVATE)
@@ -131,6 +154,7 @@ private fun createWebView(): WebView {
     s.domStorageEnabled = true
     s.databaseEnabled = true
     s.cacheMode = WebSettings.LOAD_DEFAULT
+    s.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     wv.webViewClient = object : WebViewClient() {
         override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {

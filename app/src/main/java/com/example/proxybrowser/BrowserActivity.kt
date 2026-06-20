@@ -34,6 +34,8 @@ private lateinit var tabBar: LinearLayout
 private lateinit var addressBar: EditText
 
 private val homeUrl = "https://claude.ai"
+private val secondUrl = "https://2ip.ru"
+private val thirdUrl = "https://www.google.com"
 
 override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -52,18 +54,33 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     val goButton = Button(this)
     goButton.text = "OK"
+    goButton.minWidth = 0
+    goButton.minimumWidth = 0
+    goButton.setPadding(20, 0, 20, 0)
 
     val newTabButton = Button(this)
     newTabButton.text = "+"
+    newTabButton.minWidth = 0
+    newTabButton.minimumWidth = 0
+    newTabButton.setPadding(20, 0, 20, 0)
 
     val backButton = Button(this)
     backButton.text = "◀"
+    backButton.minWidth = 0
+    backButton.minimumWidth = 0
+    backButton.setPadding(20, 0, 20, 0)
 
     val forwardButton = Button(this)
     forwardButton.text = "▶"
+    forwardButton.minWidth = 0
+    forwardButton.minimumWidth = 0
+    forwardButton.setPadding(20, 0, 20, 0)
 
     val reloadButton = Button(this)
     reloadButton.text = "⟳"
+    reloadButton.minWidth = 0
+    reloadButton.minimumWidth = 0
+    reloadButton.setPadding(20, 0, 20, 0)
 
     topBar.addView(backButton)
     topBar.addView(forwardButton)
@@ -112,8 +129,15 @@ override fun onCreate(savedInstanceState: Bundle?) {
     if (useProxy && proxyStr.isNotEmpty() && WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
         startProxyThenOpen(proxyStr)
     } else {
-        addTab(homeUrl)
+        openStartTabs()
     }
+}
+
+private fun openStartTabs() {
+    addTab(homeUrl)
+    addTab(secondUrl)
+    addTab(thirdUrl)
+    selectTab(0)
 }
 
 private fun startProxyThenOpen(proxyStr: String) {
@@ -135,7 +159,7 @@ private fun startProxyThenOpen(proxyStr: String) {
         ProxyController.getInstance().setProxyOverride(
             config,
             { r -> r.run() },
-            { runOnUiThread { addTab(homeUrl) } }
+            { runOnUiThread { openStartTabs() } }
         )
     } catch (e: Exception) {
         Toast.makeText(this, "Ошибка прокси: " + e.message, Toast.LENGTH_LONG).show()

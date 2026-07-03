@@ -1,7 +1,9 @@
 package com.example.proxybrowser
 
 import android.annotation.SuppressLint
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -35,15 +37,25 @@ class BrowserActivity : AppCompatActivity() {
 
     private val homeUrl = "https://claude.ai"
 
-    // Закреплённые сайты: название кнопки -> адрес
     private val pinnedSites = linkedMapOf(
         "Claude" to "https://claude.ai",
         "ChatGPT" to "https://chatgpt.com",
         "YouTube" to "https://www.youtube.com",
         "Google" to "https://www.google.com"
     )
-    // Тут запоминаем, в какой вкладке открыт каждый закреплённый сайт
     private val pinnedWebViews = mutableMapOf<String, WebView>()
+
+    // Переводит dp (условные единицы) в реальные пиксели экрана
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
+    }
+
+    // Параметры для кнопок верхней панели (побольше, с отступом друг от друга)
+    private fun navButtonLayoutParams(): LinearLayout.LayoutParams {
+        val p = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(56))
+        p.marginEnd = dp(6)
+        return p
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,42 +65,56 @@ class BrowserActivity : AppCompatActivity() {
 
         val topBar = LinearLayout(this)
         topBar.orientation = LinearLayout.HORIZONTAL
+        topBar.gravity = Gravity.CENTER_VERTICAL
+        topBar.setPadding(dp(4), dp(6), dp(4), dp(6))
 
         addressBar = EditText(this)
         addressBar.hint = "Адрес сайта"
         addressBar.setSingleLine(true)
+        addressBar.textSize = 16f
+        addressBar.setPadding(dp(10), 0, dp(10), 0)
         addressBar.layoutParams = LinearLayout.LayoutParams(
-            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-
-        val goButton = Button(this)
-        goButton.text = "OK"
-        goButton.minWidth = 0
-        goButton.minimumWidth = 0
-        goButton.setPadding(20, 0, 20, 0)
-
-        val newTabButton = Button(this)
-        newTabButton.text = "+"
-        newTabButton.minWidth = 0
-        newTabButton.minimumWidth = 0
-        newTabButton.setPadding(20, 0, 20, 0)
+            0, dp(56), 1f)
 
         val backButton = Button(this)
         backButton.text = "◀"
-        backButton.minWidth = 0
-        backButton.minimumWidth = 0
-        backButton.setPadding(20, 0, 20, 0)
+        backButton.textSize = 20f
+        backButton.minWidth = dp(56)
+        backButton.minimumWidth = dp(56)
+        backButton.setPadding(dp(4), dp(4), dp(4), dp(4))
+        backButton.layoutParams = navButtonLayoutParams()
 
         val forwardButton = Button(this)
         forwardButton.text = "▶"
-        forwardButton.minWidth = 0
-        forwardButton.minimumWidth = 0
-        forwardButton.setPadding(20, 0, 20, 0)
+        forwardButton.textSize = 20f
+        forwardButton.minWidth = dp(56)
+        forwardButton.minimumWidth = dp(56)
+        forwardButton.setPadding(dp(4), dp(4), dp(4), dp(4))
+        forwardButton.layoutParams = navButtonLayoutParams()
 
         val reloadButton = Button(this)
         reloadButton.text = "⟳"
-        reloadButton.minWidth = 0
-        reloadButton.minimumWidth = 0
-        reloadButton.setPadding(20, 0, 20, 0)
+        reloadButton.textSize = 20f
+        reloadButton.minWidth = dp(56)
+        reloadButton.minimumWidth = dp(56)
+        reloadButton.setPadding(dp(4), dp(4), dp(4), dp(4))
+        reloadButton.layoutParams = navButtonLayoutParams()
+
+        val goButton = Button(this)
+        goButton.text = "OK"
+        goButton.textSize = 16f
+        goButton.minWidth = dp(64)
+        goButton.minimumWidth = dp(64)
+        goButton.setPadding(dp(8), dp(4), dp(8), dp(4))
+        goButton.layoutParams = navButtonLayoutParams()
+
+        val newTabButton = Button(this)
+        newTabButton.text = "+"
+        newTabButton.textSize = 22f
+        newTabButton.minWidth = dp(56)
+        newTabButton.minimumWidth = dp(56)
+        newTabButton.setPadding(dp(4), dp(4), dp(4), dp(4))
+        newTabButton.layoutParams = navButtonLayoutParams()
 
         topBar.addView(backButton)
         topBar.addView(forwardButton)
@@ -97,7 +123,6 @@ class BrowserActivity : AppCompatActivity() {
         topBar.addView(goButton)
         topBar.addView(newTabButton)
 
-        // Панель с закреплёнными сайтами
         val pinnedBar = LinearLayout(this)
         pinnedBar.orientation = LinearLayout.HORIZONTAL
         for ((name, url) in pinnedSites) {
@@ -116,6 +141,7 @@ class BrowserActivity : AppCompatActivity() {
         val tabScroll = HorizontalScrollView(this)
         tabBar = LinearLayout(this)
         tabBar.orientation = LinearLayout.HORIZONTAL
+        tabBar.setPadding(dp(4), dp(4), dp(4), dp(4))
         tabScroll.addView(tabBar)
 
         container = FrameLayout(this)
@@ -162,8 +188,6 @@ class BrowserActivity : AppCompatActivity() {
         openPinned("Claude", homeUrl)
     }
 
-    // Открывает закреплённый сайт: если он уже открыт в одной из вкладок —
-    // переключается на неё, иначе создаёт новую вкладку.
     private fun openPinned(name: String, url: String) {
         val existing = pinnedWebViews[name]
         if (existing != null && webViews.contains(existing)) {
@@ -212,7 +236,18 @@ class BrowserActivity : AppCompatActivity() {
         s.domStorageEnabled = true
         s.databaseEnabled = true
         s.cacheMode = WebSettings.LOAD_DEFAULT
-        s.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+        // Заставляет страницу правильно подстраиваться под ширину экрана
+        s.useWideViewPort = true
+        s.loadWithOverviewMode = true
+
+        // Разрешает щипковый зум (pinch-zoom), если где-то элементы всё же мелкие
+        s.setSupportZoom(true)
+        s.builtInZoomControls = true
+        s.displayZoomControls = false
+
+        // Мобильный User-Agent — сайты присылают мобильную (адаптивную) версию страниц
+        s.userAgentString = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
 
         wv.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
@@ -238,7 +273,13 @@ class BrowserActivity : AppCompatActivity() {
 
         val tabView = LinearLayout(this)
         tabView.orientation = LinearLayout.HORIZONTAL
-        tabView.setPadding(16, 8, 16, 8)
+        tabView.setPadding(dp(12), dp(10), dp(12), dp(10))
+        val tabParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        tabParams.marginEnd = dp(6)
+        tabParams.topMargin = dp(4)
+        tabParams.bottomMargin = dp(4)
+        tabView.layoutParams = tabParams
 
         val titleView = TextView(this)
         titleView.text = "Новая вкладка"
@@ -275,7 +316,6 @@ class BrowserActivity : AppCompatActivity() {
         if (index < 0 || index >= webViews.size) return
         val wv = webViews[index]
 
-        // если закрываемая вкладка была закреплённой — забываем про неё
         val pinnedKey = pinnedWebViews.entries.firstOrNull { it.value === wv }?.key
         if (pinnedKey != null) {
             pinnedWebViews.remove(pinnedKey)
@@ -309,13 +349,18 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 
+    // Рисует каждой вкладке рамку, чтобы они не сливались друг с другом
+    private fun styleTab(view: View, selected: Boolean) {
+        val bg = GradientDrawable()
+        bg.cornerRadius = dp(8).toFloat()
+        bg.setStroke(dp(1), 0xFF999999.toInt())
+        bg.setColor(if (selected) 0xFFB0C4DE.toInt() else 0xFFF2F2F2.toInt())
+        view.background = bg
+    }
+
     private fun highlightTabs() {
         for (i in tabButtons.indices) {
-            if (i == currentIndex) {
-                tabButtons[i].setBackgroundColor(0xFFB0C4DE.toInt())
-            } else {
-                tabButtons[i].setBackgroundColor(0xFFEEEEEE.toInt())
-            }
+            styleTab(tabButtons[i], i == currentIndex)
         }
     }
 

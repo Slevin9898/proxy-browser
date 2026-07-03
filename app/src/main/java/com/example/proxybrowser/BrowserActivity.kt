@@ -45,16 +45,84 @@ class BrowserActivity : AppCompatActivity() {
     )
     private val pinnedWebViews = mutableMapOf<String, WebView>()
 
-    // Переводит dp (условные единицы) в реальные пиксели экрана
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
     }
 
-    // Параметры для кнопок верхней панели (побольше, с отступом друг от друга)
     private fun navButtonLayoutParams(): LinearLayout.LayoutParams {
-        val p = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(56))
+        val p = LinearLayout.LayoutParams(0, dp(56), 1f)
         p.marginEnd = dp(6)
         return p
+    }
+
+    // ---------- Хранение списка избранных сайтов ----------
+
+    private fun loadFavorites(): MutableList<Pair<String, String>> {
+        val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        val raw = prefs.getString("favorites", null)
+        if (raw.isNullOrEmpty()) {
+            return mutableListOf(
+                "Claude" to "https://claude.ai",
+                "ChatGPT" to "https://chatgpt.com",
+                "YouTube" to "https://www.youtube.com",
+                "Google" to "https://www.google.com"
+            )
+        }
+        val result = mutableListOf<Pair<String, String>>()
+        for (line in raw.split("\n")) {
+            if (line.isBlank()) continue
+            val idx = line.indexOf("\t")
+            if (idx < 0) continue
+            val name = line.substring(0, idx)
+            val siteUrl = line.substring(idx + 1)
+            result.add(name to siteUrl)
+        }
+        return result
+    }
+
+    private fun saveFavorites(list: List<Pair<String, String>>) {
+        val raw = list.joinToString("\n") { it.first + "\t" + it.second }
+        getSharedPreferences("settings", MODE_PRIVATE).edit().putString("favorites", raw).apply()
+    }
+
+    // Строит HTML-страницу со списком избранного и формой добавления
+    private fun buildNewTabHtml(): String {
+        val favorites = loadFavorites()
+        val sb = StringBuilder()
+        sb.append("<html><head><title>Избранное</title>")
+        sb.append("<meta name='viewport' content='width=device-width, initial-scale=1.0'>")
+        sb.append("<style>")
+        sb.append("body{font-family:sans-serif;background:#fafafa;padding:16px;margin:0;}")
+        sb.append("h2{font-size:20px;color:#333;}")
+        sb.append(".item{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #ccc;border-radius:10px;padding:16px;margin-bottom:10px;}")
+        sb.append(".item a.open{flex:1;text-decoration:none;color:#1a0dab;font-size:18px;}")
+        sb.append(".item a.del{color:#999;text-decoration:none;font-size:20px;padding-left:12px;}")
+        sb.append("form{background:#fff;border:1px solid #ccc;border-radius:10px;padding:16px;margin-top:20px;}")
+        sb.append("input{display:block;width:100%;box-sizing:border-box;font-size:16px;padding:12px;margin-bottom:10px;border:1px solid #ccc;border-radius:8px;}")
+        sb.append("button{width:100%;font-size:16px;padding:14px;background:#1a73e8;color:#fff;border:none;border-radius:8px;}")
+        sb.append("</style></head><body>")
+        sb.append("<h2>Избранные сайты</h2>")
+        if (favorites.isEmpty()) {
+            sb.append("<p>Список пуст. Добавьте сайт ниже.</p>")
+        }
+        for (i in favorites.indices) {
+            val name = favorites[i].first
+            val siteUrl = favorites[i].second
+            val safeName = android.text.Html.escapeHtml(name)
+            val encodedUrl = android.net.Uri.encode(siteUrl)
+            val encodedName = android.net.Uri.encode(name)
+            sb.append("<div class='item'>")
+            sb.append("<a class='open' href='favorites://open?url=" + encodedUrl + "&name=" + encodedName + "'>" + safeName + "</a>")
+            sb.append("<a class='del' href='favorites://delete?index=" + i + "'>&#10005;</a>")
+            sb.append("</div>")
+        }
+        sb.append("<form action='favorites://add' method='GET'>")
+        sb.append("<input type='text' name='name' placeholder='Название сайта' required>")
+        sb.append("<input type='text' name='url' placeholder='Адрес сайта (https://...)' required>")
+        sb.append("<button type='submit'>Добавить в избранное</button>")
+        sb.append("</form>")
+        sb.append("</body></html>")
+        return sb.toString()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,66 +131,69 @@ class BrowserActivity : AppCompatActivity() {
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
 
-        val topBar = LinearLayout(this)
-        topBar.orientation = LinearLayout.HORIZONTAL
-        topBar.gravity = Gravity.CENTER_VERTICAL
-        topBar.setPadding(dp(4), dp(6), dp(4), dp(6))
-
-        addressBar = EditText(this)
-        addressBar.hint = "Адрес сайта"
-        addressBar.setSingleLine(true)
-        addressBar.textSize = 16f
-        addressBar.setPadding(dp(10), 0, dp(10), 0)
-        addressBar.layoutParams = LinearLayout.LayoutParams(
-            0, dp(56), 1f)
+        // Строка 1: кнопки навигации
+        val navBar = LinearLayout(this)
+        navBar.orientation = LinearLayout.HORIZONTAL
+        navBar.gravity = Gravity.CENTER_VERTICAL
+        navBar.setPadding(dp(4), dp(6), dp(4), dp(4))
 
         val backButton = Button(this)
         backButton.text = "◀"
         backButton.textSize = 20f
-        backButton.minWidth = dp(56)
-        backButton.minimumWidth = dp(56)
         backButton.setPadding(dp(4), dp(4), dp(4), dp(4))
         backButton.layoutParams = navButtonLayoutParams()
 
         val forwardButton = Button(this)
         forwardButton.text = "▶"
         forwardButton.textSize = 20f
-        forwardButton.minWidth = dp(56)
-        forwardButton.minimumWidth = dp(56)
         forwardButton.setPadding(dp(4), dp(4), dp(4), dp(4))
         forwardButton.layoutParams = navButtonLayoutParams()
 
         val reloadButton = Button(this)
         reloadButton.text = "⟳"
         reloadButton.textSize = 20f
-        reloadButton.minWidth = dp(56)
-        reloadButton.minimumWidth = dp(56)
         reloadButton.setPadding(dp(4), dp(4), dp(4), dp(4))
         reloadButton.layoutParams = navButtonLayoutParams()
-
-        val goButton = Button(this)
-        goButton.text = "OK"
-        goButton.textSize = 16f
-        goButton.minWidth = dp(64)
-        goButton.minimumWidth = dp(64)
-        goButton.setPadding(dp(8), dp(4), dp(8), dp(4))
-        goButton.layoutParams = navButtonLayoutParams()
 
         val newTabButton = Button(this)
         newTabButton.text = "+"
         newTabButton.textSize = 22f
-        newTabButton.minWidth = dp(56)
-        newTabButton.minimumWidth = dp(56)
         newTabButton.setPadding(dp(4), dp(4), dp(4), dp(4))
         newTabButton.layoutParams = navButtonLayoutParams()
 
-        topBar.addView(backButton)
-        topBar.addView(forwardButton)
-        topBar.addView(reloadButton)
-        topBar.addView(addressBar)
-        topBar.addView(goButton)
-        topBar.addView(newTabButton)
+        navBar.addView(backButton)
+        navBar.addView(forwardButton)
+        navBar.addView(reloadButton)
+        navBar.addView(newTabButton)
 
+        // Строка 2: адресная строка + кнопка OK
+        val addressRow = LinearLayout(this)
+        addressRow.orientation = LinearLayout.HORIZONTAL
+        addressRow.gravity = Gravity.CENTER_VERTICAL
+        addressRow.setPadding(dp(4), dp(4), dp(4), dp(6))
+
+        addressBar = EditText(this)
+        addressBar.hint = "Адрес сайта"
+        addressBar.setSingleLine(true)
+        addressBar.textSize = 16f
+        addressBar.setPadding(dp(12), 0, dp(12), 0)
+        val addressParams = LinearLayout.LayoutParams(0, dp(56), 1f)
+        addressParams.marginEnd = dp(6)
+        addressBar.layoutParams = addressParams
+
+        val goButton = Button(this)
+        goButton.text = "OK"
+        goButton.textSize = 16f
+        goButton.minWidth = dp(70)
+        goButton.minimumWidth = dp(70)
+        goButton.setPadding(dp(8), dp(4), dp(8), dp(4))
+        goButton.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, dp(56))
+
+        addressRow.addView(addressBar)
+        addressRow.addView(goButton)
+
+        // Панель закреплённых сайтов
         val pinnedBar = LinearLayout(this)
         pinnedBar.orientation = LinearLayout.HORIZONTAL
         for ((name, url) in pinnedSites) {
@@ -148,7 +219,8 @@ class BrowserActivity : AppCompatActivity() {
         container.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
 
-        root.addView(topBar)
+        root.addView(navBar)
+        root.addView(addressRow)
         root.addView(pinnedBar)
         root.addView(tabScroll)
         root.addView(container)
@@ -159,7 +231,7 @@ class BrowserActivity : AppCompatActivity() {
             currentWebView()?.loadUrl(url)
         }
         newTabButton.setOnClickListener {
-            addTab(homeUrl)
+            addTab("", true)
         }
         backButton.setOnClickListener {
             val wv = currentWebView()
@@ -236,27 +308,66 @@ class BrowserActivity : AppCompatActivity() {
         s.domStorageEnabled = true
         s.databaseEnabled = true
         s.cacheMode = WebSettings.LOAD_DEFAULT
-
-        // Заставляет страницу правильно подстраиваться под ширину экрана
         s.useWideViewPort = true
         s.loadWithOverviewMode = true
-
-        // Разрешает щипковый зум (pinch-zoom), если где-то элементы всё же мелкие
         s.setSupportZoom(true)
         s.builtInZoomControls = true
         s.displayZoomControls = false
-
-        // Мобильный User-Agent — сайты присылают мобильную (адаптивную) версию страниц
         s.userAgentString = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
 
         wv.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 if (view === currentWebView()) {
-                    addressBar.setText(url ?: "")
+                    if (view?.tag == "newtab") {
+                        addressBar.setText("")
+                    } else {
+                        addressBar.setText(url ?: "")
+                    }
                 }
             }
             override fun onPageFinished(view: WebView?, url: String?) {
                 updateTabTitles()
+            }
+            override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
+                val url = request?.url?.toString() ?: return false
+                val webView = view ?: return false
+
+                if (url.startsWith("favorites://open")) {
+                    val uri = android.net.Uri.parse(url)
+                    val target = uri.getQueryParameter("url")
+                    if (!target.isNullOrEmpty()) {
+                        webView.tag = null
+                        webView.loadUrl(target)
+                    }
+                    return true
+                }
+                if (url.startsWith("favorites://add")) {
+                    val uri = android.net.Uri.parse(url)
+                    val name = uri.getQueryParameter("name")?.trim()
+                    val siteUrl = uri.getQueryParameter("url")?.trim()
+                    if (!name.isNullOrEmpty() && !siteUrl.isNullOrEmpty()) {
+                        val normalized = if (siteUrl.startsWith("http://") || siteUrl.startsWith("https://")) siteUrl else "https://" + siteUrl
+                        val favorites = loadFavorites()
+                        favorites.add(name to normalized)
+                        saveFavorites(favorites)
+                    }
+                    webView.loadDataWithBaseURL(null, buildNewTabHtml(), "text/html", "UTF-8", null)
+                    return true
+                }
+                if (url.startsWith("favorites://delete")) {
+                    val uri = android.net.Uri.parse(url)
+                    val index = uri.getQueryParameter("index")?.toIntOrNull()
+                    if (index != null) {
+                        val favorites = loadFavorites()
+                        if (index in favorites.indices) {
+                            favorites.removeAt(index)
+                            saveFavorites(favorites)
+                        }
+                    }
+                    webView.loadDataWithBaseURL(null, buildNewTabHtml(), "text/html", "UTF-8", null)
+                    return true
+                }
+                return false
             }
         }
         wv.webChromeClient = object : WebChromeClient() {
@@ -267,7 +378,7 @@ class BrowserActivity : AppCompatActivity() {
         return wv
     }
 
-    private fun addTab(url: String) {
+    private fun addTab(url: String, isNewTabPage: Boolean = false) {
         val wv = createWebView()
         webViews.add(wv)
 
@@ -298,7 +409,13 @@ class BrowserActivity : AppCompatActivity() {
         closeView.setOnClickListener { closeTab(webViews.indexOf(wv)) }
 
         selectTab(webViews.size - 1)
-        wv.loadUrl(url)
+
+        if (isNewTabPage) {
+            wv.tag = "newtab"
+            wv.loadDataWithBaseURL(null, buildNewTabHtml(), "text/html", "UTF-8", null)
+        } else {
+            wv.loadUrl(url)
+        }
     }
 
     private fun selectTab(index: Int) {
@@ -308,7 +425,7 @@ class BrowserActivity : AppCompatActivity() {
         val wv = webViews[index]
         container.addView(wv, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        addressBar.setText(wv.url ?: "")
+        addressBar.setText(if (wv.tag == "newtab") "" else (wv.url ?: ""))
         highlightTabs()
     }
 
@@ -349,7 +466,6 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 
-    // Рисует каждой вкладке рамку, чтобы они не сливались друг с другом
     private fun styleTab(view: View, selected: Boolean) {
         val bg = GradientDrawable()
         bg.cornerRadius = dp(8).toFloat()

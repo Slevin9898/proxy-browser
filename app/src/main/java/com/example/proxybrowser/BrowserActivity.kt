@@ -23,285 +23,326 @@ import androidx.webkit.WebViewFeature
 
 class BrowserActivity : AppCompatActivity() {
 
-private var proxyServer: LocalProxyServer? = null
+    private var proxyServer: LocalProxyServer? = null
 
-private val webViews = ArrayList<WebView>()
-private val tabButtons = ArrayList<View>()
-private var currentIndex = -1
+    private val webViews = ArrayList<WebView>()
+    private val tabButtons = ArrayList<View>()
+    private var currentIndex = -1
 
-private lateinit var container: FrameLayout
-private lateinit var tabBar: LinearLayout
-private lateinit var addressBar: EditText
+    private lateinit var container: FrameLayout
+    private lateinit var tabBar: LinearLayout
+    private lateinit var addressBar: EditText
 
-private val homeUrl = "https://claude.ai"
-private val secondUrl = "https://2ip.ru"
-private val thirdUrl = "https://www.google.com"
+    private val homeUrl = "https://claude.ai"
 
-override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
+    // Закреплённые сайты: название кнопки -> адрес
+    private val pinnedSites = linkedMapOf(
+        "Claude" to "https://claude.ai",
+        "ChatGPT" to "https://chatgpt.com",
+        "YouTube" to "https://www.youtube.com",
+        "Google" to "https://www.google.com"
+    )
+    // Тут запоминаем, в какой вкладке открыт каждый закреплённый сайт
+    private val pinnedWebViews = mutableMapOf<String, WebView>()
 
-    val root = LinearLayout(this)
-    root.orientation = LinearLayout.VERTICAL
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
-    val topBar = LinearLayout(this)
-    topBar.orientation = LinearLayout.HORIZONTAL
+        val root = LinearLayout(this)
+        root.orientation = LinearLayout.VERTICAL
 
-    addressBar = EditText(this)
-    addressBar.hint = "Адрес сайта"
-    addressBar.setSingleLine(true)
-    addressBar.layoutParams = LinearLayout.LayoutParams(
-        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        val topBar = LinearLayout(this)
+        topBar.orientation = LinearLayout.HORIZONTAL
 
-    val goButton = Button(this)
-    goButton.text = "OK"
-    goButton.minWidth = 0
-    goButton.minimumWidth = 0
-    goButton.setPadding(20, 0, 20, 0)
+        addressBar = EditText(this)
+        addressBar.hint = "Адрес сайта"
+        addressBar.setSingleLine(true)
+        addressBar.layoutParams = LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
 
-    val newTabButton = Button(this)
-    newTabButton.text = "+"
-    newTabButton.minWidth = 0
-    newTabButton.minimumWidth = 0
-    newTabButton.setPadding(20, 0, 20, 0)
+        val goButton = Button(this)
+        goButton.text = "OK"
+        goButton.minWidth = 0
+        goButton.minimumWidth = 0
+        goButton.setPadding(20, 0, 20, 0)
 
-    val backButton = Button(this)
-    backButton.text = "◀"
-    backButton.minWidth = 0
-    backButton.minimumWidth = 0
-    backButton.setPadding(20, 0, 20, 0)
+        val newTabButton = Button(this)
+        newTabButton.text = "+"
+        newTabButton.minWidth = 0
+        newTabButton.minimumWidth = 0
+        newTabButton.setPadding(20, 0, 20, 0)
 
-    val forwardButton = Button(this)
-    forwardButton.text = "▶"
-    forwardButton.minWidth = 0
-    forwardButton.minimumWidth = 0
-    forwardButton.setPadding(20, 0, 20, 0)
+        val backButton = Button(this)
+        backButton.text = "◀"
+        backButton.minWidth = 0
+        backButton.minimumWidth = 0
+        backButton.setPadding(20, 0, 20, 0)
 
-    val reloadButton = Button(this)
-    reloadButton.text = "⟳"
-    reloadButton.minWidth = 0
-    reloadButton.minimumWidth = 0
-    reloadButton.setPadding(20, 0, 20, 0)
+        val forwardButton = Button(this)
+        forwardButton.text = "▶"
+        forwardButton.minWidth = 0
+        forwardButton.minimumWidth = 0
+        forwardButton.setPadding(20, 0, 20, 0)
 
-    topBar.addView(backButton)
-    topBar.addView(forwardButton)
-    topBar.addView(reloadButton)
-    topBar.addView(addressBar)
-    topBar.addView(goButton)
-    topBar.addView(newTabButton)
+        val reloadButton = Button(this)
+        reloadButton.text = "⟳"
+        reloadButton.minWidth = 0
+        reloadButton.minimumWidth = 0
+        reloadButton.setPadding(20, 0, 20, 0)
 
-    val tabScroll = HorizontalScrollView(this)
-    tabBar = LinearLayout(this)
-    tabBar.orientation = LinearLayout.HORIZONTAL
-    tabScroll.addView(tabBar)
+        topBar.addView(backButton)
+        topBar.addView(forwardButton)
+        topBar.addView(reloadButton)
+        topBar.addView(addressBar)
+        topBar.addView(goButton)
+        topBar.addView(newTabButton)
 
-    container = FrameLayout(this)
-    container.layoutParams = LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        // Панель с закреплёнными сайтами
+        val pinnedBar = LinearLayout(this)
+        pinnedBar.orientation = LinearLayout.HORIZONTAL
+        for ((name, url) in pinnedSites) {
+            val btn = Button(this)
+            btn.text = name
+            btn.textSize = 12f
+            btn.setAllCaps(false)
+            btn.setSingleLine(true)
+            btn.setPadding(4, 8, 4, 8)
+            btn.layoutParams = LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            btn.setOnClickListener { openPinned(name, url) }
+            pinnedBar.addView(btn)
+        }
 
-    root.addView(topBar)
-    root.addView(tabScroll)
-    root.addView(container)
-    setContentView(root)
+        val tabScroll = HorizontalScrollView(this)
+        tabBar = LinearLayout(this)
+        tabBar.orientation = LinearLayout.HORIZONTAL
+        tabScroll.addView(tabBar)
 
-    goButton.setOnClickListener {
-        val url = normalizeUrl(addressBar.text.toString().trim())
-        currentWebView()?.loadUrl(url)
+        container = FrameLayout(this)
+        container.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+
+        root.addView(topBar)
+        root.addView(pinnedBar)
+        root.addView(tabScroll)
+        root.addView(container)
+        setContentView(root)
+
+        goButton.setOnClickListener {
+            val url = normalizeUrl(addressBar.text.toString().trim())
+            currentWebView()?.loadUrl(url)
+        }
+        newTabButton.setOnClickListener {
+            addTab(homeUrl)
+        }
+        backButton.setOnClickListener {
+            val wv = currentWebView()
+            if (wv != null && wv.canGoBack()) wv.goBack()
+        }
+        forwardButton.setOnClickListener {
+            val wv = currentWebView()
+            if (wv != null && wv.canGoForward()) wv.goForward()
+        }
+        reloadButton.setOnClickListener {
+            currentWebView()?.reload()
+        }
+
+        val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        val useProxy = prefs.getBoolean("use_proxy", false)
+        val proxyStr = prefs.getString("proxy", "") ?: ""
+
+        if (useProxy && proxyStr.isNotEmpty() && WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+            startProxyThenOpen(proxyStr)
+        } else {
+            openStartTabs()
+        }
     }
-    newTabButton.setOnClickListener {
-    addTab(homeUrl)
-    }
-    backButton.setOnClickListener {
-    val wv = currentWebView()
-    if (wv != null && wv.canGoBack()) wv.goBack()
-    }
-    forwardButton.setOnClickListener {
-    val wv = currentWebView()
-    if (wv != null && wv.canGoForward()) wv.goForward()
-    }
-    reloadButton.setOnClickListener {
-    currentWebView()?.reload()
+
+    private fun openStartTabs() {
+        openPinned("Claude", homeUrl)
     }
 
-    val prefs = getSharedPreferences("settings", MODE_PRIVATE)
-    val useProxy = prefs.getBoolean("use_proxy", false)
-    val proxyStr = prefs.getString("proxy", "") ?: ""
-
-    if (useProxy && proxyStr.isNotEmpty() && WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
-        startProxyThenOpen(proxyStr)
-    } else {
-        openStartTabs()
+    // Открывает закреплённый сайт: если он уже открыт в одной из вкладок —
+    // переключается на неё, иначе создаёт новую вкладку.
+    private fun openPinned(name: String, url: String) {
+        val existing = pinnedWebViews[name]
+        if (existing != null && webViews.contains(existing)) {
+            selectTab(webViews.indexOf(existing))
+            return
+        }
+        addTab(url)
+        pinnedWebViews[name] = webViews[webViews.size - 1]
     }
-}
 
-private fun openStartTabs() {
-    addTab(homeUrl)
-    addTab(secondUrl)
-    addTab(thirdUrl)
-    selectTab(0)
-}
+    private fun startProxyThenOpen(proxyStr: String) {
+        try {
+            val parts = proxyStr.split(":")
+            val host = parts[0]
+            val port = parts[1].toInt()
+            val user = if (parts.size > 2) parts[2] else null
+            val pass = if (parts.size > 3) parts[3] else null
 
-private fun startProxyThenOpen(proxyStr: String) {
-    try {
-        val parts = proxyStr.split(":")
-        val host = parts[0]
-        val port = parts[1].toInt()
-        val user = if (parts.size > 2) parts[2] else null
-        val pass = if (parts.size > 3) parts[3] else null
+            val server = LocalProxyServer(host, port, user, pass)
+            val localPort = server.start()
+            proxyServer = server
 
-        val server = LocalProxyServer(host, port, user, pass)
-        val localPort = server.start()
-        proxyServer = server
+            val config = ProxyConfig.Builder()
+                .addProxyRule("127.0.0.1:" + localPort)
+                .build()
 
-        val config = ProxyConfig.Builder()
-            .addProxyRule("127.0.0.1:" + localPort)
-            .build()
-
-        ProxyController.getInstance().setProxyOverride(
-            config,
-            { r -> r.run() },
-            { runOnUiThread { openStartTabs() } }
-        )
-    } catch (e: Exception) {
-        Toast.makeText(this, "Ошибка прокси: " + e.message, Toast.LENGTH_LONG).show()
-        addTab(homeUrl)
+            ProxyController.getInstance().setProxyOverride(
+                config,
+                { r -> r.run() },
+                { runOnUiThread { openStartTabs() } }
+            )
+        } catch (e: Exception) {
+            Toast.makeText(this, "Ошибка прокси: " + e.message, Toast.LENGTH_LONG).show()
+            openStartTabs()
+        }
     }
-}
 
-@SuppressLint("SetJavaScriptEnabled")
-private fun createWebView(): WebView {
-    val wv = WebView(this)
-    val cm = CookieManager.getInstance()
-    cm.setAcceptCookie(true)
-    cm.setAcceptThirdPartyCookies(wv, true)
-    val s = wv.settings
-    s.javaScriptEnabled = true
-    s.domStorageEnabled = true
-    s.databaseEnabled = true
-    s.cacheMode = WebSettings.LOAD_DEFAULT
-    s.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun createWebView(): WebView {
+        val wv = WebView(this)
+        val cm = CookieManager.getInstance()
+        cm.setAcceptCookie(true)
+        cm.setAcceptThirdPartyCookies(wv, true)
+        val s = wv.settings
+        s.javaScriptEnabled = true
+        s.domStorageEnabled = true
+        s.databaseEnabled = true
+        s.cacheMode = WebSettings.LOAD_DEFAULT
+        s.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-    wv.webViewClient = object : WebViewClient() {
-        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-            if (view === currentWebView()) {
-                addressBar.setText(url ?: "")
+        wv.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                if (view === currentWebView()) {
+                    addressBar.setText(url ?: "")
+                }
+            }
+            override fun onPageFinished(view: WebView?, url: String?) {
+                updateTabTitles()
             }
         }
-        override fun onPageFinished(view: WebView?, url: String?) {
-            updateTabTitles()
+        wv.webChromeClient = object : WebChromeClient() {
+            override fun onReceivedTitle(view: WebView?, title: String?) {
+                updateTabTitles()
+            }
+        }
+        return wv
+    }
+
+    private fun addTab(url: String) {
+        val wv = createWebView()
+        webViews.add(wv)
+
+        val tabView = LinearLayout(this)
+        tabView.orientation = LinearLayout.HORIZONTAL
+        tabView.setPadding(16, 8, 16, 8)
+
+        val titleView = TextView(this)
+        titleView.text = "Новая вкладка"
+        titleView.maxWidth = 300
+        titleView.setSingleLine(true)
+
+        val closeView = TextView(this)
+        closeView.text = "  ✕"
+
+        tabView.addView(titleView)
+        tabView.addView(closeView)
+        tabBar.addView(tabView)
+        tabButtons.add(tabView)
+
+        tabView.setOnClickListener { selectTab(webViews.indexOf(wv)) }
+        closeView.setOnClickListener { closeTab(webViews.indexOf(wv)) }
+
+        selectTab(webViews.size - 1)
+        wv.loadUrl(url)
+    }
+
+    private fun selectTab(index: Int) {
+        if (index < 0 || index >= webViews.size) return
+        currentIndex = index
+        container.removeAllViews()
+        val wv = webViews[index]
+        container.addView(wv, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        addressBar.setText(wv.url ?: "")
+        highlightTabs()
+    }
+
+    private fun closeTab(index: Int) {
+        if (index < 0 || index >= webViews.size) return
+        val wv = webViews[index]
+
+        // если закрываемая вкладка была закреплённой — забываем про неё
+        val pinnedKey = pinnedWebViews.entries.firstOrNull { it.value === wv }?.key
+        if (pinnedKey != null) {
+            pinnedWebViews.remove(pinnedKey)
+        }
+
+        val tabView = tabButtons[index]
+        webViews.removeAt(index)
+        tabButtons.removeAt(index)
+        tabBar.removeView(tabView)
+        container.removeView(wv)
+        wv.destroy()
+
+        if (webViews.isEmpty()) {
+            openStartTabs()
+            return
+        }
+        val newIndex = if (index >= webViews.size) webViews.size - 1 else index
+        selectTab(newIndex)
+    }
+
+    private fun currentWebView(): WebView? {
+        if (currentIndex < 0 || currentIndex >= webViews.size) return null
+        return webViews[currentIndex]
+    }
+
+    private fun updateTabTitles() {
+        for (i in webViews.indices) {
+            val tv = (tabButtons[i] as LinearLayout).getChildAt(0) as TextView
+            val title = webViews[i].title
+            tv.text = if (title.isNullOrEmpty()) "Вкладка" else title
         }
     }
-    wv.webChromeClient = object : WebChromeClient() {
-        override fun onReceivedTitle(view: WebView?, title: String?) {
-            updateTabTitles()
+
+    private fun highlightTabs() {
+        for (i in tabButtons.indices) {
+            if (i == currentIndex) {
+                tabButtons[i].setBackgroundColor(0xFFB0C4DE.toInt())
+            } else {
+                tabButtons[i].setBackgroundColor(0xFFEEEEEE.toInt())
+            }
         }
     }
-    return wv
-}
 
-private fun addTab(url: String) {
-    val wv = createWebView()
-    webViews.add(wv)
-
-    val tabView = LinearLayout(this)
-    tabView.orientation = LinearLayout.HORIZONTAL
-    tabView.setPadding(16, 8, 16, 8)
-
-    val titleView = TextView(this)
-    titleView.text = "Новая вкладка"
-    titleView.maxWidth = 300
-    titleView.setSingleLine(true)
-
-    val closeView = TextView(this)
-    closeView.text = "  ✕"
-
-    tabView.addView(titleView)
-    tabView.addView(closeView)
-    tabBar.addView(tabView)
-    tabButtons.add(tabView)
-
-    tabView.setOnClickListener { selectTab(webViews.indexOf(wv)) }
-    closeView.setOnClickListener { closeTab(webViews.indexOf(wv)) }
-
-    selectTab(webViews.size - 1)
-    wv.loadUrl(url)
-}
-
-private fun selectTab(index: Int) {
-    if (index < 0 || index >= webViews.size) return
-    currentIndex = index
-    container.removeAllViews()
-    val wv = webViews[index]
-    container.addView(wv, FrameLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-    addressBar.setText(wv.url ?: "")
-    highlightTabs()
-}
-
-private fun closeTab(index: Int) {
-    if (index < 0 || index >= webViews.size) return
-    val wv = webViews[index]
-    val tabView = tabButtons[index]
-    webViews.removeAt(index)
-    tabButtons.removeAt(index)
-    tabBar.removeView(tabView)
-    container.removeView(wv)
-    wv.destroy()
-
-    if (webViews.isEmpty()) {
-        addTab(homeUrl)
-        return
+    private fun normalizeUrl(input: String): String {
+        if (input.isEmpty()) return homeUrl
+        if (input.startsWith("http://") || input.startsWith("https://")) return input
+        if (input.contains(".") && !input.contains(" ")) return "https://" + input
+        return "https://www.google.com/search?q=" + android.net.Uri.encode(input)
     }
-    val newIndex = if (index >= webViews.size) webViews.size - 1 else index
-    selectTab(newIndex)
-}
 
-private fun currentWebView(): WebView? {
-    if (currentIndex < 0 || currentIndex >= webViews.size) return null
-    return webViews[currentIndex]
-}
-
-private fun updateTabTitles() {
-    for (i in webViews.indices) {
-        val tv = (tabButtons[i] as LinearLayout).getChildAt(0) as TextView
-        val title = webViews[i].title
-        tv.text = if (title.isNullOrEmpty()) "Вкладка" else title
+    override fun onPause() {
+        super.onPause()
+        CookieManager.getInstance().flush()
     }
-}
 
-private fun highlightTabs() {
-    for (i in tabButtons.indices) {
-        if (i == currentIndex) {
-            tabButtons[i].setBackgroundColor(0xFFB0C4DE.toInt())
+    override fun onDestroy() {
+        super.onDestroy()
+        proxyServer?.stop()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        val wv = currentWebView()
+        if (wv != null && wv.canGoBack()) {
+            wv.goBack()
         } else {
-            tabButtons[i].setBackgroundColor(0xFFEEEEEE.toInt())
+            super.onBackPressed()
         }
     }
-}
-
-private fun normalizeUrl(input: String): String {
-    if (input.isEmpty()) return homeUrl
-    if (input.startsWith("http://") || input.startsWith("https://")) return input
-    if (input.contains(".") && !input.contains(" ")) return "https://" + input
-    return "https://www.google.com/search?q=" + android.net.Uri.encode(input)
-}
-
-override fun onPause() {
-    super.onPause()
-    CookieManager.getInstance().flush()
-}
-
-override fun onDestroy() {
-    super.onDestroy()
-    proxyServer?.stop()
-}
-
-@Deprecated("Deprecated in Java")
-override fun onBackPressed() {
-    val wv = currentWebView()
-    if (wv != null && wv.canGoBack()) {
-        wv.goBack()
-    } else {
-        super.onBackPressed()
-    }
-}
 }

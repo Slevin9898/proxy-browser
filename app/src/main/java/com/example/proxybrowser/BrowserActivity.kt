@@ -1,12 +1,15 @@
 package com.example.proxybrowser
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -18,6 +21,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.ProxyConfig
 import androidx.webkit.ProxyController
@@ -34,6 +38,32 @@ class BrowserActivity : AppCompatActivity() {
     private lateinit var container: FrameLayout
     private lateinit var tabBar: LinearLayout
     private lateinit var addressBar: EditText
+
+    // --- для загрузки файлов с сайтов (кнопка "прикрепить файл") ---
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
+
+    private val fileChooserLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val callback = filePathCallback
+        filePathCallback = null
+        if (callback == null) return@registerForActivityResult
+
+        if (result.resultCode == RESULT_OK) {
+            val data = result.data
+            val uris: Array<Uri>? = when {
+                data?.clipData != null -> {
+                    val clipData = data.clipData!!
+                    Array(clipData.itemCount) { i -> clipData.getItemAt(i).uri }
+                }
+                data?.data != null -> arrayOf(data.data!!)
+                else -> null
+            }
+            callback.onReceiveValue(uris)
+        } else {
+            callback.onReceiveValue(null)
+        }
+    }
 
     private val homeUrl = "https://claude.ai"
 
@@ -373,6 +403,31 @@ class BrowserActivity : AppCompatActivity() {
         wv.webChromeClient = object : WebChromeClient() {
             override fun onReceivedTitle(view: WebView?, title: String?) {
                 updateTabTitles()
+            }
+
+            override fun onShowFileChooser(
+                view: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                this@BrowserActivity.filePathCallback?.onReceiveValue(null)
+                this@BrowserActivity.filePathCallback = filePathCallback
+
+                val intent = fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT)
+                intent.type = intent.type ?: "*/*"
+                intent.addCategory(Intent.CATEGORY_OPENABLE)
+                if (fileChooserParams?.mode == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                }
+
+                return try {
+                    fileChooserLauncher.launch(Intent.createChooser(intent, "Выберите файл"))
+                    true
+                } catch (e: Exception) {
+                    this@BrowserActivity.filePathCallback = null
+                    Toast.makeText(this@BrowserActivity, "Не удалось открыть выбор файла", Toast.LENGTH_SHORT).show()
+                    false
+                }
             }
         }
         return wv

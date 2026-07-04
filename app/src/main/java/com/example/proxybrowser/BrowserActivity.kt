@@ -20,6 +20,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -74,20 +75,20 @@ class BrowserActivity : AppCompatActivity() {
 
     private val homeUrl = "https://claude.ai"
 
-    private val pinnedSites = linkedMapOf(
-        "Claude" to "https://claude.ai",
-        "ChatGPT" to "https://chatgpt.com",
-        "YouTube" to "https://www.youtube.com",
-        "Google" to "https://www.google.com"
-    )
     private val pinnedWebViews = mutableMapOf<String, WebView>()
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
     }
 
-    private fun navButtonLayoutParams(): LinearLayout.LayoutParams {
-        val p = LinearLayout.LayoutParams(0, dp(56), 1f)
+    private fun iconButtonLayoutParams(): LinearLayout.LayoutParams {
+        val p = LinearLayout.LayoutParams(dp(52), dp(48))
+        p.marginEnd = dp(6)
+        return p
+    }
+
+    private fun siteButtonLayoutParams(): LinearLayout.LayoutParams {
+        val p = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48))
         p.marginEnd = dp(6)
         return p
     }
@@ -168,40 +169,72 @@ class BrowserActivity : AppCompatActivity() {
         rootLayout = LinearLayout(this)
         rootLayout.orientation = LinearLayout.VERTICAL
 
-        // Строка 1: кнопки навигации
+        // Строка 1: кнопки навигации + быстрые кнопки сайтов (объединены в одну строку с прокруткой)
+        val navScroll = HorizontalScrollView(this)
+        navScroll.isHorizontalScrollBarEnabled = false
         val navBar = LinearLayout(this)
         navBar.orientation = LinearLayout.HORIZONTAL
         navBar.gravity = Gravity.CENTER_VERTICAL
-        navBar.setPadding(dp(4), dp(6), dp(4), dp(4))
+        navBar.setPadding(dp(4), dp(6), dp(4), dp(6))
+        navScroll.addView(navBar)
 
         val backButton = Button(this)
         backButton.text = "◀"
-        backButton.textSize = 20f
-        backButton.setPadding(dp(4), dp(4), dp(4), dp(4))
-        backButton.layoutParams = navButtonLayoutParams()
+        backButton.textSize = 18f
+        backButton.setPadding(0, 0, 0, 0)
+        backButton.layoutParams = iconButtonLayoutParams()
 
         val forwardButton = Button(this)
         forwardButton.text = "▶"
-        forwardButton.textSize = 20f
-        forwardButton.setPadding(dp(4), dp(4), dp(4), dp(4))
-        forwardButton.layoutParams = navButtonLayoutParams()
+        forwardButton.textSize = 18f
+        forwardButton.setPadding(0, 0, 0, 0)
+        forwardButton.layoutParams = iconButtonLayoutParams()
 
         val reloadButton = Button(this)
         reloadButton.text = "⟳"
         reloadButton.textSize = 20f
-        reloadButton.setPadding(dp(4), dp(4), dp(4), dp(4))
-        reloadButton.layoutParams = navButtonLayoutParams()
+        reloadButton.setPadding(0, 0, 0, 0)
+        reloadButton.layoutParams = iconButtonLayoutParams()
 
         val newTabButton = Button(this)
         newTabButton.text = "+"
         newTabButton.textSize = 22f
-        newTabButton.setPadding(dp(4), dp(4), dp(4), dp(4))
-        newTabButton.layoutParams = navButtonLayoutParams()
+        newTabButton.setPadding(0, 0, 0, 0)
+        newTabButton.layoutParams = iconButtonLayoutParams()
 
         navBar.addView(backButton)
         navBar.addView(forwardButton)
         navBar.addView(reloadButton)
         navBar.addView(newTabButton)
+
+        // Кнопка "Нейросети" — объединяет Claude и ChatGPT, при нажатии показывает выбор
+        val aiButton = Button(this)
+        aiButton.text = "Нейросети ▾"
+        aiButton.textSize = 12f
+        aiButton.setAllCaps(false)
+        aiButton.setSingleLine(true)
+        aiButton.setPadding(dp(12), 0, dp(12), 0)
+        aiButton.layoutParams = siteButtonLayoutParams()
+
+        val youTubeButton = Button(this)
+        youTubeButton.text = "YouTube"
+        youTubeButton.textSize = 12f
+        youTubeButton.setAllCaps(false)
+        youTubeButton.setSingleLine(true)
+        youTubeButton.setPadding(dp(12), 0, dp(12), 0)
+        youTubeButton.layoutParams = siteButtonLayoutParams()
+
+        val googleButton = Button(this)
+        googleButton.text = "Google"
+        googleButton.textSize = 12f
+        googleButton.setAllCaps(false)
+        googleButton.setSingleLine(true)
+        googleButton.setPadding(dp(12), 0, dp(12), 0)
+        googleButton.layoutParams = siteButtonLayoutParams()
+
+        navBar.addView(aiButton)
+        navBar.addView(youTubeButton)
+        navBar.addView(googleButton)
 
         // Строка 2: адресная строка + кнопка OK
         val addressRow = LinearLayout(this)
@@ -230,22 +263,6 @@ class BrowserActivity : AppCompatActivity() {
         addressRow.addView(addressBar)
         addressRow.addView(goButton)
 
-        // Панель закреплённых сайтов
-        val pinnedBar = LinearLayout(this)
-        pinnedBar.orientation = LinearLayout.HORIZONTAL
-        for ((name, url) in pinnedSites) {
-            val btn = Button(this)
-            btn.text = name
-            btn.textSize = 12f
-            btn.setAllCaps(false)
-            btn.setSingleLine(true)
-            btn.setPadding(4, 8, 4, 8)
-            btn.layoutParams = LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            btn.setOnClickListener { openPinned(name, url) }
-            pinnedBar.addView(btn)
-        }
-
         val tabScroll = HorizontalScrollView(this)
         tabBar = LinearLayout(this)
         tabBar.orientation = LinearLayout.HORIZONTAL
@@ -256,9 +273,8 @@ class BrowserActivity : AppCompatActivity() {
         container.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
 
-        rootLayout.addView(navBar)
+        rootLayout.addView(navScroll)
         rootLayout.addView(addressRow)
-        rootLayout.addView(pinnedBar)
         rootLayout.addView(tabScroll)
         rootLayout.addView(container)
         setContentView(rootLayout)
@@ -279,7 +295,30 @@ class BrowserActivity : AppCompatActivity() {
             if (wv != null && wv.canGoForward()) wv.goForward()
         }
         reloadButton.setOnClickListener {
-            currentWebView()?.reload()
+            val wv = currentWebView() ?: return@setOnClickListener
+            // Принудительная перезагрузка: не берём страницу из кэша, а качаем заново с сайта
+            wv.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+            wv.reload()
+            wv.settings.cacheMode = WebSettings.LOAD_DEFAULT
+        }
+        aiButton.setOnClickListener { anchor ->
+            val popup = PopupMenu(this, anchor)
+            popup.menu.add("Claude")
+            popup.menu.add("ChatGPT")
+            popup.setOnMenuItemClickListener { item ->
+                when (item.title) {
+                    "Claude" -> openPinned("Claude", "https://claude.ai")
+                    "ChatGPT" -> openPinned("ChatGPT", "https://chatgpt.com")
+                }
+                true
+            }
+            popup.show()
+        }
+        youTubeButton.setOnClickListener {
+            openPinned("YouTube", "https://www.youtube.com")
+        }
+        googleButton.setOnClickListener {
+            openPinned("Google", "https://www.google.com")
         }
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)

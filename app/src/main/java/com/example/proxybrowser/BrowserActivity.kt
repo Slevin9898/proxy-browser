@@ -2,6 +2,7 @@ package com.example.proxybrowser
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
@@ -35,9 +36,15 @@ class BrowserActivity : AppCompatActivity() {
     private val tabButtons = ArrayList<View>()
     private var currentIndex = -1
 
+    private lateinit var rootLayout: LinearLayout
     private lateinit var container: FrameLayout
     private lateinit var tabBar: LinearLayout
     private lateinit var addressBar: EditText
+
+    // --- для полноэкранного видео (YouTube и т.п.) ---
+    private var customView: View? = null
+    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
+    private var fullscreenContainer: FrameLayout? = null
 
     // --- для загрузки файлов с сайтов (кнопка "прикрепить файл") ---
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
@@ -158,8 +165,8 @@ class BrowserActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val root = LinearLayout(this)
-        root.orientation = LinearLayout.VERTICAL
+        rootLayout = LinearLayout(this)
+        rootLayout.orientation = LinearLayout.VERTICAL
 
         // Строка 1: кнопки навигации
         val navBar = LinearLayout(this)
@@ -249,12 +256,12 @@ class BrowserActivity : AppCompatActivity() {
         container.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
 
-        root.addView(navBar)
-        root.addView(addressRow)
-        root.addView(pinnedBar)
-        root.addView(tabScroll)
-        root.addView(container)
-        setContentView(root)
+        rootLayout.addView(navBar)
+        rootLayout.addView(addressRow)
+        rootLayout.addView(pinnedBar)
+        rootLayout.addView(tabScroll)
+        rootLayout.addView(container)
+        setContentView(rootLayout)
 
         goButton.setOnClickListener {
             val url = normalizeUrl(addressBar.text.toString().trim())
@@ -429,8 +436,66 @@ class BrowserActivity : AppCompatActivity() {
                     false
                 }
             }
+
+            // --- Полноэкранное видео (кнопка "развернуть на весь экран" на YouTube и др.) ---
+            override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                if (view == null || callback == null) return
+
+                if (customView != null) {
+                    callback.onCustomViewHidden()
+                    return
+                }
+
+                customView = view
+                customViewCallback = callback
+
+                val decor = window.decorView as FrameLayout
+                val fsContainer = FrameLayout(this@BrowserActivity)
+                fsContainer.layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                fsContainer.setBackgroundColor(0xFF000000.toInt())
+                fsContainer.addView(
+                    view,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+                decor.addView(fsContainer)
+                fullscreenContainer = fsContainer
+
+                rootLayout.visibility = View.GONE
+
+                window.decorView.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                )
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                supportActionBar?.hide()
+            }
+
+            override fun onHideCustomView() {
+                exitFullscreenVideo()
+                customViewCallback?.onCustomViewHidden()
+                customViewCallback = null
+            }
         }
         return wv
+    }
+
+    private fun exitFullscreenVideo() {
+        if (customView == null) return
+        val decor = window.decorView as FrameLayout
+        fullscreenContainer?.let { decor.removeView(it) }
+        fullscreenContainer = null
+        customView = null
+
+        rootLayout.visibility = View.VISIBLE
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        supportActionBar?.show()
     }
 
     private fun addTab(url: String, isNewTabPage: Boolean = false) {
@@ -554,6 +619,12 @@ class BrowserActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (customView != null) {
+            customViewCallback?.onCustomViewHidden()
+            exitFullscreenVideo()
+            customViewCallback = null
+            return
+        }
         val wv = currentWebView()
         if (wv != null && wv.canGoBack()) {
             wv.goBack()

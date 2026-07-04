@@ -82,14 +82,14 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun iconButtonLayoutParams(): LinearLayout.LayoutParams {
-        val p = LinearLayout.LayoutParams(dp(52), dp(48))
-        p.marginEnd = dp(6)
+        val p = LinearLayout.LayoutParams(dp(44), dp(40))
+        p.marginEnd = dp(4)
         return p
     }
 
     private fun siteButtonLayoutParams(): LinearLayout.LayoutParams {
-        val p = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48))
-        p.marginEnd = dp(6)
+        val p = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40))
+        p.marginEnd = dp(4)
         return p
     }
 
@@ -175,30 +175,30 @@ class BrowserActivity : AppCompatActivity() {
         val navBar = LinearLayout(this)
         navBar.orientation = LinearLayout.HORIZONTAL
         navBar.gravity = Gravity.CENTER_VERTICAL
-        navBar.setPadding(dp(4), dp(6), dp(4), dp(6))
+        navBar.setPadding(dp(4), dp(3), dp(4), dp(3))
         navScroll.addView(navBar)
 
         val backButton = Button(this)
         backButton.text = "◀"
-        backButton.textSize = 18f
+        backButton.textSize = 15f
         backButton.setPadding(0, 0, 0, 0)
         backButton.layoutParams = iconButtonLayoutParams()
 
         val forwardButton = Button(this)
         forwardButton.text = "▶"
-        forwardButton.textSize = 18f
+        forwardButton.textSize = 15f
         forwardButton.setPadding(0, 0, 0, 0)
         forwardButton.layoutParams = iconButtonLayoutParams()
 
         val reloadButton = Button(this)
         reloadButton.text = "⟳"
-        reloadButton.textSize = 20f
+        reloadButton.textSize = 17f
         reloadButton.setPadding(0, 0, 0, 0)
         reloadButton.layoutParams = iconButtonLayoutParams()
 
         val newTabButton = Button(this)
         newTabButton.text = "+"
-        newTabButton.textSize = 22f
+        newTabButton.textSize = 18f
         newTabButton.setPadding(0, 0, 0, 0)
         newTabButton.layoutParams = iconButtonLayoutParams()
 
@@ -210,26 +210,26 @@ class BrowserActivity : AppCompatActivity() {
         // Кнопка "Нейросети" — объединяет Claude и ChatGPT, при нажатии показывает выбор
         val aiButton = Button(this)
         aiButton.text = "Нейросети ▾"
-        aiButton.textSize = 12f
+        aiButton.textSize = 11f
         aiButton.setAllCaps(false)
         aiButton.setSingleLine(true)
-        aiButton.setPadding(dp(12), 0, dp(12), 0)
+        aiButton.setPadding(dp(10), 0, dp(10), 0)
         aiButton.layoutParams = siteButtonLayoutParams()
 
         val youTubeButton = Button(this)
         youTubeButton.text = "YouTube"
-        youTubeButton.textSize = 12f
+        youTubeButton.textSize = 11f
         youTubeButton.setAllCaps(false)
         youTubeButton.setSingleLine(true)
-        youTubeButton.setPadding(dp(12), 0, dp(12), 0)
+        youTubeButton.setPadding(dp(10), 0, dp(10), 0)
         youTubeButton.layoutParams = siteButtonLayoutParams()
 
         val googleButton = Button(this)
         googleButton.text = "Google"
-        googleButton.textSize = 12f
+        googleButton.textSize = 11f
         googleButton.setAllCaps(false)
         googleButton.setSingleLine(true)
-        googleButton.setPadding(dp(12), 0, dp(12), 0)
+        googleButton.setPadding(dp(10), 0, dp(10), 0)
         googleButton.layoutParams = siteButtonLayoutParams()
 
         navBar.addView(aiButton)
@@ -240,25 +240,25 @@ class BrowserActivity : AppCompatActivity() {
         val addressRow = LinearLayout(this)
         addressRow.orientation = LinearLayout.HORIZONTAL
         addressRow.gravity = Gravity.CENTER_VERTICAL
-        addressRow.setPadding(dp(4), dp(4), dp(4), dp(6))
+        addressRow.setPadding(dp(4), dp(3), dp(4), dp(4))
 
         addressBar = EditText(this)
         addressBar.hint = "Адрес сайта"
         addressBar.setSingleLine(true)
-        addressBar.textSize = 16f
+        addressBar.textSize = 15f
         addressBar.setPadding(dp(12), 0, dp(12), 0)
-        val addressParams = LinearLayout.LayoutParams(0, dp(56), 1f)
+        val addressParams = LinearLayout.LayoutParams(0, dp(46), 1f)
         addressParams.marginEnd = dp(6)
         addressBar.layoutParams = addressParams
 
         val goButton = Button(this)
         goButton.text = "OK"
-        goButton.textSize = 16f
-        goButton.minWidth = dp(70)
-        goButton.minimumWidth = dp(70)
-        goButton.setPadding(dp(8), dp(4), dp(8), dp(4))
+        goButton.textSize = 14f
+        goButton.minWidth = dp(60)
+        goButton.minimumWidth = dp(60)
+        goButton.setPadding(dp(6), dp(2), dp(6), dp(2))
         goButton.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, dp(56))
+            ViewGroup.LayoutParams.WRAP_CONTENT, dp(46))
 
         addressRow.addView(addressBar)
         addressRow.addView(goButton)
@@ -266,7 +266,7 @@ class BrowserActivity : AppCompatActivity() {
         val tabScroll = HorizontalScrollView(this)
         tabBar = LinearLayout(this)
         tabBar.orientation = LinearLayout.HORIZONTAL
-        tabBar.setPadding(dp(4), dp(4), dp(4), dp(4))
+        tabBar.setPadding(dp(4), dp(2), dp(4), dp(2))
         tabScroll.addView(tabBar)
 
         container = FrameLayout(this)
@@ -543,21 +543,23 @@ class BrowserActivity : AppCompatActivity() {
 
         val tabView = LinearLayout(this)
         tabView.orientation = LinearLayout.HORIZONTAL
-        tabView.setPadding(dp(12), dp(10), dp(12), dp(10))
+        tabView.setPadding(dp(10), dp(5), dp(10), dp(5))
         val tabParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        tabParams.marginEnd = dp(6)
-        tabParams.topMargin = dp(4)
-        tabParams.bottomMargin = dp(4)
+        tabParams.marginEnd = dp(4)
+        tabParams.topMargin = dp(2)
+        tabParams.bottomMargin = dp(2)
         tabView.layoutParams = tabParams
 
         val titleView = TextView(this)
         titleView.text = "Новая вкладка"
         titleView.maxWidth = 300
+        titleView.textSize = 13f
         titleView.setSingleLine(true)
 
         val closeView = TextView(this)
         closeView.text = "  ✕"
+        closeView.textSize = 13f
 
         tabView.addView(titleView)
         tabView.addView(closeView)

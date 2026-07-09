@@ -37,7 +37,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.ProxyConfig
 import androidx.webkit.ProxyController
 import androidx.webkit.WebViewFeature
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
+
+data class SiteFolder(val name: String, val sites: MutableList<Pair<String, String>>)
 
 class BrowserActivity : AppCompatActivity() {
 
@@ -51,6 +55,7 @@ class BrowserActivity : AppCompatActivity() {
     private lateinit var container: FrameLayout
     private lateinit var tabBar: LinearLayout
     private lateinit var addressBar: EditText
+    private lateinit var foldersButtonsContainer: LinearLayout
 
     // --- для полноэкранного видео (YouTube и т.п.) ---
     private var customView: View? = null
@@ -103,7 +108,7 @@ class BrowserActivity : AppCompatActivity() {
         return p
     }
 
-    // ---------- Хранение списка избранных сайтов ----------
+    // ---------- Хранение списка избранных сайтов (страница "+") ----------
 
     private fun loadFavorites(): MutableList<Pair<String, String>> {
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
@@ -173,11 +178,187 @@ class BrowserActivity : AppCompatActivity() {
         return sb.toString()
     }
 
+    // ---------- Хранение папок с сайтами (задача 2) ----------
+
+    private fun loadFolders(): MutableList<SiteFolder> {
+        val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        val raw = prefs.getString("folders", null)
+        if (raw.isNullOrEmpty()) {
+            return mutableListOf(
+                SiteFolder("Нейросети", mutableListOf(
+                    "Claude" to "https://claude.ai",
+                    "ChatGPT" to "https://chatgpt.com"
+                ))
+            )
+        }
+        val result = mutableListOf<SiteFolder>()
+        try {
+            val arr = JSONArray(raw)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val name = obj.getString("name")
+                val sitesArr = obj.getJSONArray("sites")
+                val sites = mutableListOf<Pair<String, String>>()
+                for (j in 0 until sitesArr.length()) {
+                    val s = sitesArr.getJSONObject(j)
+                    sites.add(s.getString("name") to s.getString("url"))
+                }
+                result.add(SiteFolder(name, sites))
+            }
+        } catch (e: Exception) {
+        }
+        return result
+    }
+
+    private fun saveFolders(folders: List<SiteFolder>) {
+        val arr = JSONArray()
+        for (f in folders) {
+            val obj = JSONObject()
+            obj.put("name", f.name)
+            val sitesArr = JSONArray()
+            for (s in f.sites) {
+                val so = JSONObject()
+                so.put("name", s.first)
+                so.put("url", s.second)
+                sitesArr.put(so)
+            }
+            obj.put("sites", sitesArr)
+            arr.put(obj)
+        }
+        getSharedPreferences("settings", MODE_PRIVATE).edit().putString("folders", arr.toString()).apply()
+    }
+
+    // Страница со списком всех папок
+    private fun buildFoldersListHtml(folders: List<SiteFolder>): String {
+        val sb = StringBuilder()
+        sb.append("<html><head><title>Папки</title>")
+        sb.append("<meta name='viewport' content='width=device-width, initial-scale=1.0'>")
+        sb.append("<style>")
+        sb.append("body{font-family:sans-serif;background:#fafafa;padding:16px;margin:0;}")
+        sb.append("h2{font-size:20px;color:#333;}")
+        sb.append("p.hint{color:#666;font-size:14px;}")
+        sb.append(".item{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #ccc;border-radius:10px;padding:16px;margin-bottom:10px;}")
+        sb.append(".item a.open{flex:1;text-decoration:none;color:#1a0dab;font-size:18px;}")
+        sb.append(".item a.del{color:#999;text-decoration:none;font-size:20px;padding-left:12px;}")
+        sb.append(".count{color:#888;font-size:13px;margin-left:6px;}")
+        sb.append("form{background:#fff;border:1px solid #ccc;border-radius:10px;padding:16px;margin-top:20px;}")
+        sb.append("input{display:block;width:100%;box-sizing:border-box;font-size:16px;padding:12px;margin-bottom:10px;border:1px solid #ccc;border-radius:8px;}")
+        sb.append("button{width:100%;font-size:16px;padding:14px;background:#1a73e8;color:#fff;border:none;border-radius:8px;}")
+        sb.append("</style></head><body>")
+        sb.append("<h2>Мои папки с сайтами</h2>")
+        sb.append("<p class='hint'>Папка — это кнопка сверху со списком сайтов внутри. Нажмите на папку, чтобы добавить или удалить сайты в ней.</p>")
+        if (folders.isEmpty()) {
+            sb.append("<p>Папок пока нет. Создайте первую ниже.</p>")
+        }
+        for (i in folders.indices) {
+            val safeName = android.text.Html.escapeHtml(folders[i].name)
+            sb.append("<div class='item'>")
+            sb.append("<a class='open' href='folders://detail?index=" + i + "'>" + safeName + "<span class='count'>(" + folders[i].sites.size + ")</span></a>")
+            sb.append("<a class='del' href='folders://deleteFolder?index=" + i + "'>&#10005;</a>")
+            sb.append("</div>")
+        }
+        sb.append("<form action='folders://addFolder' method='GET'>")
+        sb.append("<input type='text' name='name' placeholder='Название новой папки' required>")
+        sb.append("<button type='submit'>Создать папку</button>")
+        sb.append("</form>")
+        sb.append("</body></html>")
+        return sb.toString()
+    }
+
+    // Страница внутри одной папки: список сайтов + добавление
+    private fun buildFolderDetailHtml(folders: List<SiteFolder>, index: Int): String {
+        val sb = StringBuilder()
+        sb.append("<html><head><title>Папка</title>")
+        sb.append("<meta name='viewport' content='width=device-width, initial-scale=1.0'>")
+        sb.append("<style>")
+        sb.append("body{font-family:sans-serif;background:#fafafa;padding:16px;margin:0;}")
+        sb.append("h2{font-size:20px;color:#333;}")
+        sb.append("a.back{display:inline-block;margin-bottom:14px;color:#1a73e8;text-decoration:none;font-size:15px;}")
+        sb.append(".item{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #ccc;border-radius:10px;padding:16px;margin-bottom:10px;}")
+        sb.append(".item span.open{flex:1;font-size:18px;color:#333;}")
+        sb.append(".item a.del{color:#999;text-decoration:none;font-size:20px;padding-left:12px;}")
+        sb.append("form{background:#fff;border:1px solid #ccc;border-radius:10px;padding:16px;margin-top:20px;}")
+        sb.append("input{display:block;width:100%;box-sizing:border-box;font-size:16px;padding:12px;margin-bottom:10px;border:1px solid #ccc;border-radius:8px;}")
+        sb.append("button{width:100%;font-size:16px;padding:14px;background:#1a73e8;color:#fff;border:none;border-radius:8px;}")
+        sb.append("</style></head><body>")
+        sb.append("<a class='back' href='folders://list'>&#8592; Ко всем папкам</a>")
+        if (index !in folders.indices) {
+            sb.append("<p>Папка не найдена.</p>")
+            sb.append("</body></html>")
+            return sb.toString()
+        }
+        val folder = folders[index]
+        val safeName = android.text.Html.escapeHtml(folder.name)
+        sb.append("<h2>" + safeName + "</h2>")
+        if (folder.sites.isEmpty()) {
+            sb.append("<p>Сайтов пока нет. Добавьте ниже.</p>")
+        }
+        for (j in folder.sites.indices) {
+            val siteName = android.text.Html.escapeHtml(folder.sites[j].first)
+            sb.append("<div class='item'>")
+            sb.append("<span class='open'>" + siteName + "</span>")
+            sb.append("<a class='del' href='folders://deleteSite?index=" + index + "&site=" + j + "'>&#10005;</a>")
+            sb.append("</div>")
+        }
+        sb.append("<form action='folders://addSite' method='GET'>")
+        sb.append("<input type='hidden' name='index' value='" + index + "'>")
+        sb.append("<input type='text' name='name' placeholder='Название сайта' required>")
+        sb.append("<input type='text' name='url' placeholder='Адрес сайта (https://...)' required>")
+        sb.append("<button type='submit'>Добавить сайт в папку</button>")
+        sb.append("</form>")
+        sb.append("</body></html>")
+        return sb.toString()
+    }
+
+    // Пересобирает кнопки-папки в верхней панели по текущим данным
+    private fun refreshFolderButtons() {
+        foldersButtonsContainer.removeAllViews()
+        val folders = loadFolders()
+        for (folder in folders) {
+            val btn = Button(this)
+            btn.text = folder.name + " ▾"
+            btn.textSize = 11f
+            btn.setAllCaps(false)
+            btn.setSingleLine(true)
+            btn.setPadding(dp(10), 0, dp(10), 0)
+            btn.layoutParams = siteButtonLayoutParams()
+            btn.setOnClickListener { anchor ->
+                if (folder.sites.isEmpty()) {
+                    Toast.makeText(this, "В папке пока нет сайтов. Нажмите ⚙, чтобы добавить.", Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
+                }
+                val popup = PopupMenu(this, anchor)
+                for (site in folder.sites) {
+                    popup.menu.add(site.first)
+                }
+                popup.setOnMenuItemClickListener { item ->
+                    val site = folder.sites.firstOrNull { it.first == item.title }
+                    if (site != null) {
+                        openPinned(folder.name + ":" + site.first, site.second)
+                    }
+                    true
+                }
+                popup.show()
+            }
+            foldersButtonsContainer.addView(btn)
+        }
+    }
+
+    // Открывает (или переключается на) вкладку со страницей управления папками
+    private fun openFoldersManagerTab() {
+        val key = "__folders_manager__"
+        val existing = pinnedWebViews[key]
+        if (existing != null && webViews.contains(existing)) {
+            selectTab(webViews.indexOf(existing))
+            existing.loadDataWithBaseURL(null, buildFoldersListHtml(loadFolders()), "text/html", "UTF-8", null)
+            return
+        }
+        addTab("", true, "folders", buildFoldersListHtml(loadFolders()))
+        pinnedWebViews[key] = webViews[webViews.size - 1]
+    }
+
     // ---------- Скачивание файлов (задача 1) ----------
 
-    // Этот скрипт вставляется в каждую открытую страницу. Он ловит клики по ссылкам
-    // "скачать" (обычным и blob-ссылкам), сам достаёт содержимое файла через JavaScript
-    // (то есть через прокси, как и вся остальная страница) и передаёт в приложение.
     private val downloadInterceptorScript = """
 (function() {
     if (window.__proxyBrowserDownloadHooked) { return; }
@@ -234,7 +415,6 @@ class BrowserActivity : AppCompatActivity() {
 })();
 """
 
-    // Сохраняет файл (переданный из JavaScript в виде base64-текста) в папку "Загрузки"
     private fun saveBase64File(base64Data: String, fileName: String, mimeType: String) {
         try {
             val cleanBase64 = if (base64Data.contains(",")) base64Data.substringAfter(",") else base64Data
@@ -275,7 +455,6 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 
-    // Мостик между JavaScript на странице и кодом приложения
     inner class WebAppInterface {
         @JavascriptInterface
         fun saveFile(base64Data: String, fileName: String, mimeType: String) {
@@ -295,7 +474,7 @@ class BrowserActivity : AppCompatActivity() {
         rootLayout = LinearLayout(this)
         rootLayout.orientation = LinearLayout.VERTICAL
 
-        // Строка 1: кнопки навигации + быстрые кнопки сайтов (объединены в одну строку с прокруткой)
+        // Строка 1: кнопки навигации + кнопки-папки с сайтами (объединены в одну строку с прокруткой)
         val navScroll = HorizontalScrollView(this)
         navScroll.isHorizontalScrollBarEnabled = false
         val navBar = LinearLayout(this)
@@ -328,19 +507,21 @@ class BrowserActivity : AppCompatActivity() {
         newTabButton.setPadding(0, 0, 0, 0)
         newTabButton.layoutParams = iconButtonLayoutParams()
 
+        val manageFoldersButton = Button(this)
+        manageFoldersButton.text = "⚙"
+        manageFoldersButton.textSize = 15f
+        manageFoldersButton.setPadding(0, 0, 0, 0)
+        manageFoldersButton.layoutParams = iconButtonLayoutParams()
+
         navBar.addView(backButton)
         navBar.addView(forwardButton)
         navBar.addView(reloadButton)
         navBar.addView(newTabButton)
+        navBar.addView(manageFoldersButton)
 
-        // Кнопка "Нейросети" — объединяет Claude и ChatGPT, при нажатии показывает выбор
-        val aiButton = Button(this)
-        aiButton.text = "Нейросети ▾"
-        aiButton.textSize = 11f
-        aiButton.setAllCaps(false)
-        aiButton.setSingleLine(true)
-        aiButton.setPadding(dp(10), 0, dp(10), 0)
-        aiButton.layoutParams = siteButtonLayoutParams()
+        foldersButtonsContainer = LinearLayout(this)
+        foldersButtonsContainer.orientation = LinearLayout.HORIZONTAL
+        navBar.addView(foldersButtonsContainer)
 
         val youTubeButton = Button(this)
         youTubeButton.text = "YouTube"
@@ -358,7 +539,6 @@ class BrowserActivity : AppCompatActivity() {
         googleButton.setPadding(dp(10), 0, dp(10), 0)
         googleButton.layoutParams = siteButtonLayoutParams()
 
-        navBar.addView(aiButton)
         navBar.addView(youTubeButton)
         navBar.addView(googleButton)
 
@@ -412,6 +592,9 @@ class BrowserActivity : AppCompatActivity() {
         newTabButton.setOnClickListener {
             addTab("", true)
         }
+        manageFoldersButton.setOnClickListener {
+            openFoldersManagerTab()
+        }
         backButton.setOnClickListener {
             val wv = currentWebView()
             if (wv != null && wv.canGoBack()) wv.goBack()
@@ -422,23 +605,9 @@ class BrowserActivity : AppCompatActivity() {
         }
         reloadButton.setOnClickListener {
             val wv = currentWebView() ?: return@setOnClickListener
-            // Принудительная перезагрузка: не берём страницу из кэша, а качаем заново с сайта
             wv.settings.cacheMode = WebSettings.LOAD_NO_CACHE
             wv.reload()
             wv.settings.cacheMode = WebSettings.LOAD_DEFAULT
-        }
-        aiButton.setOnClickListener { anchor ->
-            val popup = PopupMenu(this, anchor)
-            popup.menu.add("Claude")
-            popup.menu.add("ChatGPT")
-            popup.setOnMenuItemClickListener { item ->
-                when (item.title) {
-                    "Claude" -> openPinned("Claude", "https://claude.ai")
-                    "ChatGPT" -> openPinned("ChatGPT", "https://chatgpt.com")
-                }
-                true
-            }
-            popup.show()
         }
         youTubeButton.setOnClickListener {
             openPinned("YouTube", "https://www.youtube.com")
@@ -446,6 +615,8 @@ class BrowserActivity : AppCompatActivity() {
         googleButton.setOnClickListener {
             openPinned("Google", "https://www.google.com")
         }
+
+        refreshFolderButtons()
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         val useProxy = prefs.getBoolean("use_proxy", false)
@@ -459,7 +630,7 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun openStartTabs() {
-        openPinned("Claude", homeUrl)
+        openPinned("__home__", homeUrl)
     }
 
     private fun openPinned(name: String, url: String) {
@@ -522,7 +693,7 @@ class BrowserActivity : AppCompatActivity() {
         wv.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 if (view === currentWebView()) {
-                    if (view?.tag == "newtab") {
+                    if (view?.tag == "newtab" || view?.tag == "folders") {
                         addressBar.setText("")
                     } else {
                         addressBar.setText(url ?: "")
@@ -572,6 +743,76 @@ class BrowserActivity : AppCompatActivity() {
                     webView.loadDataWithBaseURL(null, buildNewTabHtml(), "text/html", "UTF-8", null)
                     return true
                 }
+
+                if (url.startsWith("folders://list")) {
+                    webView.loadDataWithBaseURL(null, buildFoldersListHtml(loadFolders()), "text/html", "UTF-8", null)
+                    return true
+                }
+                if (url.startsWith("folders://detail")) {
+                    val uri = android.net.Uri.parse(url)
+                    val idx = uri.getQueryParameter("index")?.toIntOrNull() ?: 0
+                    webView.loadDataWithBaseURL(null, buildFolderDetailHtml(loadFolders(), idx), "text/html", "UTF-8", null)
+                    return true
+                }
+                if (url.startsWith("folders://addFolder")) {
+                    val uri = android.net.Uri.parse(url)
+                    val name = uri.getQueryParameter("name")?.trim()
+                    if (!name.isNullOrEmpty()) {
+                        val folders = loadFolders()
+                        folders.add(SiteFolder(name, mutableListOf()))
+                        saveFolders(folders)
+                        refreshFolderButtons()
+                    }
+                    webView.loadDataWithBaseURL(null, buildFoldersListHtml(loadFolders()), "text/html", "UTF-8", null)
+                    return true
+                }
+                if (url.startsWith("folders://deleteFolder")) {
+                    val uri = android.net.Uri.parse(url)
+                    val idx = uri.getQueryParameter("index")?.toIntOrNull()
+                    if (idx != null) {
+                        val folders = loadFolders()
+                        if (idx in folders.indices) {
+                            folders.removeAt(idx)
+                            saveFolders(folders)
+                            refreshFolderButtons()
+                        }
+                    }
+                    webView.loadDataWithBaseURL(null, buildFoldersListHtml(loadFolders()), "text/html", "UTF-8", null)
+                    return true
+                }
+                if (url.startsWith("folders://addSite")) {
+                    val uri = android.net.Uri.parse(url)
+                    val idx = uri.getQueryParameter("index")?.toIntOrNull()
+                    val name = uri.getQueryParameter("name")?.trim()
+                    val siteUrl = uri.getQueryParameter("url")?.trim()
+                    if (idx != null && !name.isNullOrEmpty() && !siteUrl.isNullOrEmpty()) {
+                        val folders = loadFolders()
+                        if (idx in folders.indices) {
+                            val normalized = if (siteUrl.startsWith("http://") || siteUrl.startsWith("https://")) siteUrl else "https://" + siteUrl
+                            folders[idx].sites.add(name to normalized)
+                            saveFolders(folders)
+                            refreshFolderButtons()
+                        }
+                    }
+                    webView.loadDataWithBaseURL(null, buildFolderDetailHtml(loadFolders(), idx ?: 0), "text/html", "UTF-8", null)
+                    return true
+                }
+                if (url.startsWith("folders://deleteSite")) {
+                    val uri = android.net.Uri.parse(url)
+                    val idx = uri.getQueryParameter("index")?.toIntOrNull()
+                    val siteIdx = uri.getQueryParameter("site")?.toIntOrNull()
+                    if (idx != null && siteIdx != null) {
+                        val folders = loadFolders()
+                        if (idx in folders.indices && siteIdx in folders[idx].sites.indices) {
+                            folders[idx].sites.removeAt(siteIdx)
+                            saveFolders(folders)
+                            refreshFolderButtons()
+                        }
+                    }
+                    webView.loadDataWithBaseURL(null, buildFolderDetailHtml(loadFolders(), idx ?: 0), "text/html", "UTF-8", null)
+                    return true
+                }
+
                 return false
             }
         }
@@ -605,7 +846,6 @@ class BrowserActivity : AppCompatActivity() {
                 }
             }
 
-            // --- Полноэкранное видео (кнопка "развернуть на весь экран" на YouTube и др.) ---
             override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
                 if (view == null || callback == null) return
 
@@ -690,7 +930,7 @@ class BrowserActivity : AppCompatActivity() {
         supportActionBar?.show()
     }
 
-    private fun addTab(url: String, isNewTabPage: Boolean = false) {
+    private fun addTab(url: String, isNewTabPage: Boolean = false, specialTag: String? = null, specialHtml: String? = null) {
         val wv = createWebView()
         webViews.add(wv)
 
@@ -725,8 +965,8 @@ class BrowserActivity : AppCompatActivity() {
         selectTab(webViews.size - 1)
 
         if (isNewTabPage) {
-            wv.tag = "newtab"
-            wv.loadDataWithBaseURL(null, buildNewTabHtml(), "text/html", "UTF-8", null)
+            wv.tag = specialTag ?: "newtab"
+            wv.loadDataWithBaseURL(null, specialHtml ?: buildNewTabHtml(), "text/html", "UTF-8", null)
         } else {
             wv.loadUrl(url)
         }
@@ -739,7 +979,7 @@ class BrowserActivity : AppCompatActivity() {
         val wv = webViews[index]
         container.addView(wv, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        addressBar.setText(if (wv.tag == "newtab") "" else (wv.url ?: ""))
+        addressBar.setText(if (wv.tag == "newtab" || wv.tag == "folders") "" else (wv.url ?: ""))
         highlightTabs()
     }
 

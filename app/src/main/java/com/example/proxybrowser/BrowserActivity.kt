@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Message
 import android.provider.MediaStore
 import android.util.Base64
 import android.view.Gravity
@@ -178,7 +179,7 @@ class BrowserActivity : AppCompatActivity() {
         return sb.toString()
     }
 
-    // ---------- Хранение папок с сайтами (задача 2) ----------
+    // ---------- Хранение папок с сайтами ----------
 
     private fun loadFolders(): MutableList<SiteFolder> {
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
@@ -357,7 +358,7 @@ class BrowserActivity : AppCompatActivity() {
         pinnedWebViews[key] = webViews[webViews.size - 1]
     }
 
-    // ---------- Скачивание файлов (задача 1) ----------
+    // ---------- Скачивание файлов ----------
 
     private val downloadInterceptorScript = """
 (function() {
@@ -687,6 +688,8 @@ class BrowserActivity : AppCompatActivity() {
         s.builtInZoomControls = true
         s.displayZoomControls = false
         s.userAgentString = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
+        s.setSupportMultipleWindows(true)
+        s.setJavaScriptCanOpenWindowsAutomatically(false)
 
         wv.addJavascriptInterface(WebAppInterface(), "AndroidDownloader")
 
@@ -889,6 +892,23 @@ class BrowserActivity : AppCompatActivity() {
                 customViewCallback?.onCustomViewHidden()
                 customViewCallback = null
             }
+
+            // --- Поддержка всплывающих окошек (например, окно входа через Google) ---
+            override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
+                if (resultMsg == null) return false
+                val newWv = createWebView()
+                webViews.add(newWv)
+                registerTabView(newWv)
+                selectTab(webViews.size - 1)
+                val transport = resultMsg.obj as WebView.WebViewTransport
+                transport.webView = newWv
+                resultMsg.sendToTarget()
+                return true
+            }
+
+            override fun onCloseWindow(window: WebView?) {
+                closeTab(webViews.indexOf(wv))
+            }
         }
 
         wv.setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
@@ -933,7 +953,19 @@ class BrowserActivity : AppCompatActivity() {
     private fun addTab(url: String, isNewTabPage: Boolean = false, specialTag: String? = null, specialHtml: String? = null) {
         val wv = createWebView()
         webViews.add(wv)
+        registerTabView(wv)
+        selectTab(webViews.size - 1)
 
+        if (isNewTabPage) {
+            wv.tag = specialTag ?: "newtab"
+            wv.loadDataWithBaseURL(null, specialHtml ?: buildNewTabHtml(), "text/html", "UTF-8", null)
+        } else {
+            wv.loadUrl(url)
+        }
+    }
+
+    // Создаёт кнопку-вкладку в полоске вкладок для уже существующего WebView
+    private fun registerTabView(wv: WebView) {
         val tabView = LinearLayout(this)
         tabView.orientation = LinearLayout.HORIZONTAL
         tabView.setPadding(dp(10), dp(5), dp(10), dp(5))
@@ -961,15 +993,6 @@ class BrowserActivity : AppCompatActivity() {
 
         tabView.setOnClickListener { selectTab(webViews.indexOf(wv)) }
         closeView.setOnClickListener { closeTab(webViews.indexOf(wv)) }
-
-        selectTab(webViews.size - 1)
-
-        if (isNewTabPage) {
-            wv.tag = specialTag ?: "newtab"
-            wv.loadDataWithBaseURL(null, specialHtml ?: buildNewTabHtml(), "text/html", "UTF-8", null)
-        } else {
-            wv.loadUrl(url)
-        }
     }
 
     private fun selectTab(index: Int) {

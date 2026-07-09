@@ -1,15 +1,24 @@
 package com.example.proxybrowser
 
 import android.annotation.SuppressLint
+import android.app.DownloadManager
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
+import android.util.Base64
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
+import android.webkit.MimeTypeMap
+import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -28,6 +37,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.ProxyConfig
 import androidx.webkit.ProxyController
 import androidx.webkit.WebViewFeature
+import java.io.File
 
 class BrowserActivity : AppCompatActivity() {
 
@@ -161,6 +171,122 @@ class BrowserActivity : AppCompatActivity() {
         sb.append("</form>")
         sb.append("</body></html>")
         return sb.toString()
+    }
+
+    // ---------- Скачивание файлов (задача 1) ----------
+
+    // Этот скрипт вставляется в каждую открытую страницу. Он ловит клики по ссылкам
+    // "скачать" (обычным и blob-ссылкам), сам достаёт содержимое файла через JavaScript
+    // (то есть через прокси, как и вся остальная страница) и передаёт в приложение.
+    private val downloadInterceptorScript = """
+(function() {
+    if (window.__proxyBrowserDownloadHooked) { return; }
+    window.__proxyBrowserDownloadHooked = true;
+
+    function toBase64(blob, callback) {
+        var reader = new FileReader();
+        reader.onloadend = function() { callback(reader.result); };
+        reader.onerror = function() { callback(''); };
+        reader.readAsDataURL(blob);
+    }
+
+    function guessName(url) {
+        try {
+            var u = new URL(url, window.location.href);
+            var last = u.pathname.split('/').pop();
+            if (last && last.length > 0) { return last; }
+        } catch (e) {}
+        return '';
+    }
+
+    function handleDownload(url, suggestedName) {
+        fetch(url).then(function(resp) {
+            return resp.blob();
+        }).then(function(blob) {
+            var mime = blob.type || 'application/octet-stream';
+            var name = suggestedName || guessName(url) || ('file_' + Date.now());
+            toBase64(blob, function(base64) {
+                AndroidDownloader.saveFile(base64, name, mime);
+            });
+        }).catch(function(err) {
+            AndroidDownloader.saveFile('', '', '');
+        });
+    }
+
+    document.addEventListener('click', function(e) {
+        var el = e.target;
+        while (el && el.tagName !== 'A') {
+            el = el.parentElement;
+        }
+        if (!el) { return; }
+        var href = el.getAttribute('href');
+        if (!href) { return; }
+        var hasDownload = el.hasAttribute('download');
+        var isBlob = href.indexOf('blob:') === 0;
+        var isData = href.indexOf('data:') === 0;
+        if (hasDownload || isBlob || isData) {
+            e.preventDefault();
+            e.stopPropagation();
+            var name = el.getAttribute('download') || '';
+            handleDownload(href, name);
+        }
+    }, true);
+})();
+"""
+
+    // Сохраняет файл (переданный из JavaScript в виде base64-текста) в папку "Загрузки"
+    private fun saveBase64File(base64Data: String, fileName: String, mimeType: String) {
+        try {
+            val cleanBase64 = if (base64Data.contains(",")) base64Data.substringAfter(",") else base64Data
+            val bytes = Base64.decode(cleanBase64, Base64.DEFAULT)
+
+            var finalName = if (fileName.isBlank()) "file_" + System.currentTimeMillis() else fileName
+            val finalMime = if (mimeType.isBlank()) "application/octet-stream" else mimeType
+
+            if (!finalName.contains(".")) {
+                val ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(finalMime)
+                if (!ext.isNullOrEmpty()) {
+                    finalName = finalName + "." + ext
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = contentResolver
+                val values = ContentValues()
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME, finalName)
+                values.put(MediaStore.MediaColumns.MIME_TYPE, finalMime)
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { out -> out.write(bytes) }
+                    Toast.makeText(this, "Файл сохранён в Загрузки: " + finalName, Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Не удалось сохранить файл", Toast.LENGTH_LONG).show()
+                }
+            } else {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (!downloadsDir.exists()) downloadsDir.mkdirs()
+                val file = File(downloadsDir, finalName)
+                file.outputStream().use { out -> out.write(bytes) }
+                Toast.makeText(this, "Файл сохранён в Загрузки: " + finalName, Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Ошибка сохранения файла: " + e.message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Мостик между JavaScript на странице и кодом приложения
+    inner class WebAppInterface {
+        @JavascriptInterface
+        fun saveFile(base64Data: String, fileName: String, mimeType: String) {
+            runOnUiThread {
+                if (base64Data.isBlank()) {
+                    Toast.makeText(this@BrowserActivity, "Не удалось скачать файл", Toast.LENGTH_LONG).show()
+                } else {
+                    saveBase64File(base64Data, fileName, mimeType)
+                }
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -391,6 +517,8 @@ class BrowserActivity : AppCompatActivity() {
         s.displayZoomControls = false
         s.userAgentString = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
 
+        wv.addJavascriptInterface(WebAppInterface(), "AndroidDownloader")
+
         wv.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 if (view === currentWebView()) {
@@ -403,6 +531,7 @@ class BrowserActivity : AppCompatActivity() {
             }
             override fun onPageFinished(view: WebView?, url: String?) {
                 updateTabTitles()
+                view?.evaluateJavascript(downloadInterceptorScript, null)
             }
             override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
@@ -521,6 +650,30 @@ class BrowserActivity : AppCompatActivity() {
                 customViewCallback = null
             }
         }
+
+        wv.setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+            if (url.startsWith("blob:") || url.startsWith("data:")) {
+                return@setDownloadListener
+            }
+            try {
+                val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                val request = DownloadManager.Request(Uri.parse(url))
+                if (mimeType != null) request.setMimeType(mimeType)
+                val cookie = CookieManager.getInstance().getCookie(url)
+                if (cookie != null) request.addRequestHeader("Cookie", cookie)
+                request.addRequestHeader("User-Agent", userAgent)
+                request.setDescription("Загрузка файла")
+                request.setTitle(fileName)
+                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+                dm.enqueue(request)
+                Toast.makeText(this, "Скачивание начато: " + fileName, Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Ошибка скачивания: " + e.message, Toast.LENGTH_LONG).show()
+            }
+        }
+
         return wv
     }
 

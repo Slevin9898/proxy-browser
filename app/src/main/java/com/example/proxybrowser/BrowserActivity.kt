@@ -14,8 +14,12 @@ import android.os.Message
 import android.provider.MediaStore
 import android.util.Base64
 import android.view.Gravity
+import android.view.KeyEvent
+import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.MimeTypeMap
@@ -56,7 +60,6 @@ class BrowserActivity : AppCompatActivity() {
     private lateinit var container: FrameLayout
     private lateinit var tabBar: LinearLayout
     private lateinit var addressBar: EditText
-    private lateinit var foldersButtonsContainer: LinearLayout
 
     // --- для полноэкранного видео (YouTube и т.п.) ---
     private var customView: View? = null
@@ -98,14 +101,8 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun iconButtonLayoutParams(): LinearLayout.LayoutParams {
-        val p = LinearLayout.LayoutParams(dp(44), dp(40))
-        p.marginEnd = dp(4)
-        return p
-    }
-
-    private fun siteButtonLayoutParams(): LinearLayout.LayoutParams {
-        val p = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40))
-        p.marginEnd = dp(4)
+        val p = LinearLayout.LayoutParams(dp(36), dp(38))
+        p.marginEnd = dp(2)
         return p
     }
 
@@ -311,38 +308,37 @@ class BrowserActivity : AppCompatActivity() {
         return sb.toString()
     }
 
-    // Пересобирает кнопки-папки в верхней панели по текущим данным
-    private fun refreshFolderButtons() {
-        foldersButtonsContainer.removeAllViews()
+    // Показывает общее меню сайтов: все папки (с их сайтами внутри) + YouTube + Google.
+    // Список собирается заново при каждом нажатии, поэтому он всегда актуален.
+    private fun showSitesMenu(anchor: View) {
+        val popup = PopupMenu(this, anchor)
+        val actions = HashMap<Int, Pair<String, String>>()
+        var nextId = 1
         val folders = loadFolders()
         for (folder in folders) {
-            val btn = Button(this)
-            btn.text = folder.name + " ▾"
-            btn.textSize = 11f
-            btn.setAllCaps(false)
-            btn.setSingleLine(true)
-            btn.setPadding(dp(10), 0, dp(10), 0)
-            btn.layoutParams = siteButtonLayoutParams()
-            btn.setOnClickListener { anchor ->
-                if (folder.sites.isEmpty()) {
-                    Toast.makeText(this, "В папке пока нет сайтов. Нажмите ⚙, чтобы добавить.", Toast.LENGTH_LONG).show()
-                    return@setOnClickListener
-                }
-                val popup = PopupMenu(this, anchor)
-                for (site in folder.sites) {
-                    popup.menu.add(site.first)
-                }
-                popup.setOnMenuItemClickListener { item ->
-                    val site = folder.sites.firstOrNull { it.first == item.title }
-                    if (site != null) {
-                        openPinned(folder.name + ":" + site.first, site.second)
-                    }
-                    true
-                }
-                popup.show()
+            if (folder.sites.isEmpty()) continue
+            val sub = popup.menu.addSubMenu(folder.name)
+            for (site in folder.sites) {
+                val id = nextId++
+                sub.add(Menu.NONE, id, Menu.NONE, site.first)
+                actions[id] = (folder.name + ":" + site.first) to site.second
             }
-            foldersButtonsContainer.addView(btn)
         }
+        val ytId = nextId++
+        popup.menu.add(Menu.NONE, ytId, Menu.NONE, "YouTube")
+        actions[ytId] = "YouTube" to "https://www.youtube.com"
+        val gId = nextId++
+        popup.menu.add(Menu.NONE, gId, Menu.NONE, "Google")
+        actions[gId] = "Google" to "https://www.google.com"
+
+        popup.setOnMenuItemClickListener { item ->
+            val action = actions[item.itemId]
+            if (action != null) {
+                openPinned(action.first, action.second)
+            }
+            true
+        }
+        popup.show()
     }
 
     // Открывает (или переключается на) вкладку со страницей управления папками
@@ -475,101 +471,74 @@ class BrowserActivity : AppCompatActivity() {
         rootLayout = LinearLayout(this)
         rootLayout.orientation = LinearLayout.VERTICAL
 
-        // Строка 1: кнопки навигации + кнопки-папки с сайтами (объединены в одну строку с прокруткой)
-        val navScroll = HorizontalScrollView(this)
-        navScroll.isHorizontalScrollBarEnabled = false
+        // Строка 1: кнопки навигации + адресная строка + кнопка перехода — всё в одной строке
         val navBar = LinearLayout(this)
         navBar.orientation = LinearLayout.HORIZONTAL
         navBar.gravity = Gravity.CENTER_VERTICAL
         navBar.setPadding(dp(4), dp(3), dp(4), dp(3))
-        navScroll.addView(navBar)
 
         val backButton = Button(this)
         backButton.text = "◀"
-        backButton.textSize = 15f
+        backButton.textSize = 13f
         backButton.setPadding(0, 0, 0, 0)
         backButton.layoutParams = iconButtonLayoutParams()
 
         val forwardButton = Button(this)
         forwardButton.text = "▶"
-        forwardButton.textSize = 15f
+        forwardButton.textSize = 13f
         forwardButton.setPadding(0, 0, 0, 0)
         forwardButton.layoutParams = iconButtonLayoutParams()
 
         val reloadButton = Button(this)
         reloadButton.text = "⟳"
-        reloadButton.textSize = 17f
+        reloadButton.textSize = 15f
         reloadButton.setPadding(0, 0, 0, 0)
         reloadButton.layoutParams = iconButtonLayoutParams()
 
         val newTabButton = Button(this)
         newTabButton.text = "+"
-        newTabButton.textSize = 18f
+        newTabButton.textSize = 16f
         newTabButton.setPadding(0, 0, 0, 0)
         newTabButton.layoutParams = iconButtonLayoutParams()
 
         val manageFoldersButton = Button(this)
         manageFoldersButton.text = "⚙"
-        manageFoldersButton.textSize = 15f
+        manageFoldersButton.textSize = 13f
         manageFoldersButton.setPadding(0, 0, 0, 0)
         manageFoldersButton.layoutParams = iconButtonLayoutParams()
+
+        val sitesButton = Button(this)
+        sitesButton.text = "🌐"
+        sitesButton.textSize = 14f
+        sitesButton.setPadding(0, 0, 0, 0)
+        sitesButton.layoutParams = iconButtonLayoutParams()
 
         navBar.addView(backButton)
         navBar.addView(forwardButton)
         navBar.addView(reloadButton)
         navBar.addView(newTabButton)
         navBar.addView(manageFoldersButton)
-
-        foldersButtonsContainer = LinearLayout(this)
-        foldersButtonsContainer.orientation = LinearLayout.HORIZONTAL
-        navBar.addView(foldersButtonsContainer)
-
-        val youTubeButton = Button(this)
-        youTubeButton.text = "YouTube"
-        youTubeButton.textSize = 11f
-        youTubeButton.setAllCaps(false)
-        youTubeButton.setSingleLine(true)
-        youTubeButton.setPadding(dp(10), 0, dp(10), 0)
-        youTubeButton.layoutParams = siteButtonLayoutParams()
-
-        val googleButton = Button(this)
-        googleButton.text = "Google"
-        googleButton.textSize = 11f
-        googleButton.setAllCaps(false)
-        googleButton.setSingleLine(true)
-        googleButton.setPadding(dp(10), 0, dp(10), 0)
-        googleButton.layoutParams = siteButtonLayoutParams()
-
-        navBar.addView(youTubeButton)
-        navBar.addView(googleButton)
-
-        // Строка 2: адресная строка + кнопка OK
-        val addressRow = LinearLayout(this)
-        addressRow.orientation = LinearLayout.HORIZONTAL
-        addressRow.gravity = Gravity.CENTER_VERTICAL
-        addressRow.setPadding(dp(4), dp(3), dp(4), dp(4))
+        navBar.addView(sitesButton)
 
         addressBar = EditText(this)
         addressBar.hint = "Адрес сайта"
         addressBar.setSingleLine(true)
-        addressBar.textSize = 15f
-        addressBar.setPadding(dp(12), 0, dp(12), 0)
-        val addressParams = LinearLayout.LayoutParams(0, dp(46), 1f)
-        addressParams.marginEnd = dp(6)
+        addressBar.textSize = 14f
+        addressBar.setPadding(dp(10), 0, dp(10), 0)
+        addressBar.imeOptions = EditorInfo.IME_ACTION_GO
+        val addressParams = LinearLayout.LayoutParams(0, dp(38), 1f)
+        addressParams.marginEnd = dp(4)
         addressBar.layoutParams = addressParams
+        navBar.addView(addressBar)
 
         val goButton = Button(this)
-        goButton.text = "OK"
+        goButton.text = "→"
         goButton.textSize = 14f
-        goButton.minWidth = dp(60)
-        goButton.minimumWidth = dp(60)
-        goButton.setPadding(dp(6), dp(2), dp(6), dp(2))
-        goButton.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, dp(46))
+        goButton.setPadding(0, 0, 0, 0)
+        goButton.layoutParams = iconButtonLayoutParams()
+        navBar.addView(goButton)
 
-        addressRow.addView(addressBar)
-        addressRow.addView(goButton)
-
+        // Строка 2: полоска открытых вкладок
         val tabScroll = HorizontalScrollView(this)
         tabBar = LinearLayout(this)
         tabBar.orientation = LinearLayout.HORIZONTAL
@@ -580,16 +549,28 @@ class BrowserActivity : AppCompatActivity() {
         container.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
 
-        rootLayout.addView(navScroll)
-        rootLayout.addView(addressRow)
+        rootLayout.addView(navBar)
         rootLayout.addView(tabScroll)
         rootLayout.addView(container)
         setContentView(rootLayout)
 
-        goButton.setOnClickListener {
+        fun goToAddress() {
             val url = normalizeUrl(addressBar.text.toString().trim())
             currentWebView()?.loadUrl(url)
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(addressBar.windowToken, 0)
         }
+
+        goButton.setOnClickListener { goToAddress() }
+        addressBar.setOnEditorActionListener { _, actionId, event ->
+            if (actionId == EditorInfo.IME_ACTION_GO || (event != null && event.keyCode == KeyEvent.KEYCODE_ENTER)) {
+                goToAddress()
+                true
+            } else {
+                false
+            }
+        }
+
         newTabButton.setOnClickListener {
             addTab("", true)
         }
@@ -610,14 +591,9 @@ class BrowserActivity : AppCompatActivity() {
             wv.reload()
             wv.settings.cacheMode = WebSettings.LOAD_DEFAULT
         }
-        youTubeButton.setOnClickListener {
-            openPinned("YouTube", "https://www.youtube.com")
+        sitesButton.setOnClickListener { anchor ->
+            showSitesMenu(anchor)
         }
-        googleButton.setOnClickListener {
-            openPinned("Google", "https://www.google.com")
-        }
-
-        refreshFolderButtons()
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         val useProxy = prefs.getBoolean("use_proxy", false)
@@ -764,7 +740,6 @@ class BrowserActivity : AppCompatActivity() {
                         val folders = loadFolders()
                         folders.add(SiteFolder(name, mutableListOf()))
                         saveFolders(folders)
-                        refreshFolderButtons()
                     }
                     webView.loadDataWithBaseURL(null, buildFoldersListHtml(loadFolders()), "text/html", "UTF-8", null)
                     return true
@@ -777,7 +752,6 @@ class BrowserActivity : AppCompatActivity() {
                         if (idx in folders.indices) {
                             folders.removeAt(idx)
                             saveFolders(folders)
-                            refreshFolderButtons()
                         }
                     }
                     webView.loadDataWithBaseURL(null, buildFoldersListHtml(loadFolders()), "text/html", "UTF-8", null)
@@ -794,7 +768,6 @@ class BrowserActivity : AppCompatActivity() {
                             val normalized = if (siteUrl.startsWith("http://") || siteUrl.startsWith("https://")) siteUrl else "https://" + siteUrl
                             folders[idx].sites.add(name to normalized)
                             saveFolders(folders)
-                            refreshFolderButtons()
                         }
                     }
                     webView.loadDataWithBaseURL(null, buildFolderDetailHtml(loadFolders(), idx ?: 0), "text/html", "UTF-8", null)
@@ -809,7 +782,6 @@ class BrowserActivity : AppCompatActivity() {
                         if (idx in folders.indices && siteIdx in folders[idx].sites.indices) {
                             folders[idx].sites.removeAt(siteIdx)
                             saveFolders(folders)
-                            refreshFolderButtons()
                         }
                     }
                     webView.loadDataWithBaseURL(null, buildFolderDetailHtml(loadFolders(), idx ?: 0), "text/html", "UTF-8", null)

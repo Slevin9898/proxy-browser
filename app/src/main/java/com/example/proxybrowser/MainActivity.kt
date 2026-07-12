@@ -8,6 +8,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
@@ -63,6 +64,21 @@ class MainActivity : AppCompatActivity() {
         startButton.layoutParams = btnParams
         layout.addView(startButton)
 
+        fun showNoProxyWarning() {
+            AlertDialog.Builder(this)
+                .setTitle("Прокси выключен")
+                .setMessage("Галочка «Использовать прокси» не стоит.\n\nЕсли продолжить, браузер откроется с вашего настоящего IP-адреса — сайты будут видеть, где вы находитесь на самом деле.\n\nРекомендуем включить прокси. Всё равно открыть браузер без него?")
+                .setPositiveButton("Всё равно открыть") { dialog, _ ->
+                    dialog.dismiss()
+                    startActivity(Intent(this, BrowserActivity::class.java))
+                }
+                .setNegativeButton("Отмена") { dialog, _ ->
+                    dialog.dismiss()
+                }
+                .setCancelable(true)
+                .show()
+        }
+
         startButton.setOnClickListener {
             val proxyText = proxyInput.text.toString().trim()
             val useProxy = useProxyCheck.isChecked
@@ -73,7 +89,7 @@ class MainActivity : AppCompatActivity() {
                 .apply()
 
             if (!useProxy) {
-                startActivity(Intent(this, BrowserActivity::class.java))
+                showNoProxyWarning()
                 return@setOnClickListener
             }
 

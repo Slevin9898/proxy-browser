@@ -145,6 +145,9 @@ class BrowserActivity : AppCompatActivity() {
         sb.append("<style>")
         sb.append("body{font-family:sans-serif;background:#fafafa;padding:16px;margin:0;}")
         sb.append("h2{font-size:20px;color:#333;}")
+        sb.append(".header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}")
+        sb.append(".header h2{margin:0;}")
+        sb.append(".gear{text-decoration:none;font-size:24px;line-height:1;color:#333;padding:6px 10px;}")
         sb.append(".item{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #ccc;border-radius:10px;padding:16px;margin-bottom:10px;}")
         sb.append(".item a.open{flex:1;text-decoration:none;color:#1a0dab;font-size:18px;}")
         sb.append(".item a.del{color:#999;text-decoration:none;font-size:20px;padding-left:12px;}")
@@ -152,7 +155,7 @@ class BrowserActivity : AppCompatActivity() {
         sb.append("input{display:block;width:100%;box-sizing:border-box;font-size:16px;padding:12px;margin-bottom:10px;border:1px solid #ccc;border-radius:8px;}")
         sb.append("button{width:100%;font-size:16px;padding:14px;background:#1a73e8;color:#fff;border:none;border-radius:8px;}")
         sb.append("</style></head><body>")
-        sb.append("<h2>Избранные сайты</h2>")
+        sb.append("<div class='header'><h2>Избранные сайты</h2><a class='gear' href='favorites://manageFolders' title='Управление папками'>&#9881;</a></div>")
         if (favorites.isEmpty()) {
             sb.append("<p>Список пуст. Добавьте сайт ниже.</p>")
         }
@@ -501,12 +504,6 @@ class BrowserActivity : AppCompatActivity() {
         newTabButton.setPadding(0, 0, 0, 0)
         newTabButton.layoutParams = iconButtonLayoutParams()
 
-        val manageFoldersButton = Button(this)
-        manageFoldersButton.text = "⚙"
-        manageFoldersButton.textSize = 13f
-        manageFoldersButton.setPadding(0, 0, 0, 0)
-        manageFoldersButton.layoutParams = iconButtonLayoutParams()
-
         val sitesButton = Button(this)
         sitesButton.text = "🌐"
         sitesButton.textSize = 14f
@@ -517,7 +514,6 @@ class BrowserActivity : AppCompatActivity() {
         navBar.addView(forwardButton)
         navBar.addView(reloadButton)
         navBar.addView(newTabButton)
-        navBar.addView(manageFoldersButton)
         navBar.addView(sitesButton)
 
         addressBar = EditText(this)
@@ -573,9 +569,6 @@ class BrowserActivity : AppCompatActivity() {
 
         newTabButton.setOnClickListener {
             addTab("", true)
-        }
-        manageFoldersButton.setOnClickListener {
-            openFoldersManagerTab()
         }
         backButton.setOnClickListener {
             val wv = currentWebView()
@@ -720,6 +713,10 @@ class BrowserActivity : AppCompatActivity() {
                         }
                     }
                     webView.loadDataWithBaseURL(null, buildNewTabHtml(), "text/html", "UTF-8", null)
+                    return true
+                }
+                if (url.startsWith("favorites://manageFolders")) {
+                    openFoldersManagerTab()
                     return true
                 }
 

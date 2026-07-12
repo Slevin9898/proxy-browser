@@ -13,6 +13,7 @@ import android.os.Environment
 import android.os.Message
 import android.provider.MediaStore
 import android.util.Base64
+import android.view.DragEvent
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.Menu
@@ -55,6 +56,7 @@ class BrowserActivity : AppCompatActivity() {
     private val webViews = ArrayList<WebView>()
     private val tabButtons = ArrayList<View>()
     private var currentIndex = -1
+    private var draggingTabView: View? = null
 
     private lateinit var rootLayout: LinearLayout
     private lateinit var container: FrameLayout
@@ -541,6 +543,32 @@ class BrowserActivity : AppCompatActivity() {
         tabBar.setPadding(dp(4), dp(2), dp(4), dp(2))
         tabScroll.addView(tabBar)
 
+        tabBar.setOnDragListener { _, event ->
+            when (event.action) {
+                DragEvent.ACTION_DRAG_STARTED -> true
+                DragEvent.ACTION_DROP -> {
+                    val draggedIdx = tabButtons.indexOf(draggingTabView)
+                    if (draggedIdx != -1) {
+                        var target = 0
+                        for (i in tabButtons.indices) {
+                            if (i == draggedIdx) continue
+                            val child = tabButtons[i]
+                            val center = child.left + child.width / 2f
+                            if (event.x > center) target++
+                        }
+                        moveTab(draggedIdx, target)
+                    }
+                    true
+                }
+                DragEvent.ACTION_DRAG_ENDED -> {
+                    draggingTabView?.alpha = 1f
+                    draggingTabView = null
+                    true
+                }
+                else -> true
+            }
+        }
+
         container = FrameLayout(this)
         container.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
@@ -962,6 +990,12 @@ class BrowserActivity : AppCompatActivity() {
 
         tabView.setOnClickListener { selectTab(webViews.indexOf(wv)) }
         closeView.setOnClickListener { closeTab(webViews.indexOf(wv)) }
+        tabView.setOnLongClickListener {
+            draggingTabView = tabView
+            tabView.alpha = 0.4f
+            tabView.startDragAndDrop(null, View.DragShadowBuilder(tabView), null, 0)
+            true
+        }
     }
 
     private fun selectTab(index: Int) {
@@ -1002,6 +1036,29 @@ class BrowserActivity : AppCompatActivity() {
     private fun currentWebView(): WebView? {
         if (currentIndex < 0 || currentIndex >= webViews.size) return null
         return webViews[currentIndex]
+    }
+
+    // Переставляет вкладку с позиции from на позицию to (и в списке вкладок, и на экране)
+    private fun moveTab(from: Int, to: Int) {
+        if (from == to) return
+        if (from !in webViews.indices || to !in webViews.indices) return
+
+        val wv = webViews.removeAt(from)
+        webViews.add(to, wv)
+
+        val tv = tabButtons.removeAt(from)
+        tabButtons.add(to, tv)
+        tabBar.removeView(tv)
+        tabBar.addView(tv, to)
+
+        if (currentIndex == from) {
+            currentIndex = to
+        } else if (from < currentIndex && to >= currentIndex) {
+            currentIndex--
+        } else if (from > currentIndex && to <= currentIndex) {
+            currentIndex++
+        }
+        highlightTabs()
     }
 
     private fun updateTabTitles() {
